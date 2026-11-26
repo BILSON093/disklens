@@ -34,7 +34,7 @@
 
 ## 安装
 
-从 [Releases](../../releases) 下载 `DiskLens.app`，拖进「应用程序」即可。
+从 [Releases](https://github.com/BILSON093/disklens/releases/latest) 下载 `DiskLens.app`，拖进「应用程序」即可。
 
 首次打开若被 Gatekeeper 拦下，右键 →「打开」，或在终端执行：
 

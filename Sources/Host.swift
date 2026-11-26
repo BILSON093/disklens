@@ -79,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         container.addSubview(dragBar)
 
         window.contentView = container
+        bridge.hostWindow = window
         window.center()
         window.makeKeyAndOrderFront(nil)
 
@@ -321,6 +322,7 @@ enum History {
 final class Bridge: NSObject, WKScriptMessageHandler {
 
     private weak var webView: WKWebView?
+    weak var hostWindow: NSWindow?
     private var result: ScanResult?
     private var junkItems: [JunkItem] = []
     private var isScanning = false
@@ -798,19 +800,6 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         let blocked = paths.filter { Trasher.isProtected($0) }
         let allowed = paths.filter { !Trasher.isProtected($0) }
 
-        if !blocked.isEmpty {
-            let alert = NSAlert()
-            alert.messageText = "有 \(blocked.count) 项位于系统受保护位置"
-            alert.informativeText = "这些路径不会被删除：" + blocked.prefix(3).joined(separator: "\n")
-            alert.addButton(withTitle: "继续处理其余 \(allowed.count) 项")
-            alert.addButton(withTitle: "全部取消")
-            alert.alertStyle = .critical
-            guard alert.runModal() == .alertFirstButtonReturn else {
-                emit(["type": "trashCancelled"])
-                return
-            }
-        }
-
         guard !allowed.isEmpty else {
             emit(["type": "trashDone", "ok": 0, "freed": 0, "failed": [], "paths": [], "blocked": blocked])
             return
@@ -820,17 +809,41 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             acc + (result?.allFiles.first(where: { $0.path == p })?.size ?? 0)
         }
 
-        let alert = NSAlert()
-        alert.messageText = "将 \(allowed.count) 个项目移到废纸篓？"
-        alert.informativeText = "预计释放 \(Fmt.size(totalSize))。项目进入废纸篓后，清空才会真正归还空间，也可以先拖回来。"
-        alert.addButton(withTitle: "移到废纸篓")
-        alert.addButton(withTitle: "取消")
-        alert.alertStyle = .warning
-        guard alert.runModal() == .alertFirstButtonReturn else {
-            emit(["type": "trashCancelled"])
+        // 测试环境可跳过确认框
+        if ProcessInfo.processInfo.environment["DL_AUTOCONFIRM"] == "1" {
+            executeTrash(allowed, blocked: blocked)
             return
         }
 
+        let alert = NSAlert()
+        alert.messageText = "将 \(allowed.count) 个项目移到废纸篓？"
+        var info = "预计释放 \(Fmt.size(totalSize))。项目进入废纸篓后，清空才会真正归还空间，也可以先拖回来。"
+        if !blocked.isEmpty {
+            info += "\n其中 \(blocked.count) 项位于系统受保护位置，将被跳过。"
+        }
+        alert.informativeText = info
+        alert.addButton(withTitle: "移到废纸篓")
+        alert.addButton(withTitle: "取消")
+        alert.alertStyle = .warning
+
+        // 用挂载在窗口上的 sheet，避免弹窗被主窗口挡住
+        NSApp.activate(ignoringOtherApps: true)
+        if let win = hostWindow {
+            alert.beginSheetModal(for: win) { [weak self] resp in
+                guard resp == .alertFirstButtonReturn else {
+                    self?.emit(["type": "trashCancelled"])
+                    return
+                }
+                self?.executeTrash(allowed, blocked: blocked)
+            }
+        } else if alert.runModal() == .alertFirstButtonReturn {
+            executeTrash(allowed, blocked: blocked)
+        } else {
+            emit(["type": "trashCancelled"])
+        }
+    }
+
+    private func executeTrash(_ allowed: [String], blocked: [String]) {
         // 删除前记录体积，用于更新树图
         var deletedSizes: [String: Int64] = [:]
         for p in allowed {

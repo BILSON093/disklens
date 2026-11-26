@@ -2,6 +2,15 @@ import Foundation
 
 /// 命令行自检：只跑扫描引擎，不启动界面
 enum ScanOnly {
+    /// 测试删除链路：--trash a,b,c
+    static func trash(paths: [String]) {
+        let out = Trasher.move(paths)
+        print("ok=\(out.ok) freed=\(out.freed) failed=\(out.failed.count) blocked=\(out.blocked.count)")
+        for f in out.failed.prefix(3) { print("  fail: \(f)") }
+        for b in out.blocked.prefix(3) { print("  blocked: \(b)") }
+        exit(0)
+    }
+
     static func run(path: String) {
         let url = URL(fileURLWithPath: path)
         let engine = ScanEngine()
