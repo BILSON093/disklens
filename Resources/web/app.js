@@ -449,7 +449,8 @@ function renderDisk(e) {
   const bar = $('diskBar');
   bar.style.width = (used * 100).toFixed(1) + '%';
   bar.className = used > 0.9 ? 'hot' : (used > 0.8 ? 'warn' : '');
-  $('diskSub').textContent = `共 ${fmtSize(e.total)} · 已用 ${Math.round(used * 100)}%`;
+  $('diskTotal').textContent = fmtSize(e.total);
+  $('diskPct').textContent = Math.round(used * 100) + '%';
 }
 
 /* ============ 结果折叠 ============ */
@@ -1660,27 +1661,22 @@ document.querySelectorAll('#dupMode button').forEach(b => {
   b.addEventListener('click', () => {
     document.querySelectorAll('#dupMode button').forEach(x => x.classList.toggle('active', x === b));
     S.dupMode = b.dataset.m;
-    const exact = S.dupMode === 'exact' || S.dupMode === 'video';
-    // 相似照片按感知哈希比对，与文件体积无关，隐藏该筛选
-    $('dupSizeWrap').hidden = S.dupMode === 'similar';
+
     $('dupScan').textContent = S.dupMode === 'video' ? '扫描重复视频'
                               : (S.dupMode === 'similar' ? '扫描相似照片' : '开始查重');
     $('dupSelInfo').textContent = S.dupMode === 'similar'
       ? '每组默认保留分辨率最高的一份'
       : '每组默认保留最新的一份';
+    $('pageSub').textContent = S.dupMode === 'similar' ? '按感知哈希找相似照片'
+                            : (S.dupMode === 'video' ? '按内容比对视频' : '按内容哈希比对');
+
+    // 体积筛选三种模式都有效（相似照片按图片体积过滤）
+    document.querySelectorAll('#dupSize button').forEach(x => x.disabled = false);
+
     // 换模式后旧结果不再有意义，清空并提示
     S.dups = []; S.dupSel.clear(); S.dupKeep = {}; S.dupFocus = null;
     renderDups(null);
     if (S.dupCollapsed) applyDupCollapse();
-    document.querySelectorAll('#dupSize button').forEach(x => x.disabled = !exact);
-    $('dupScan').textContent = exact ? '开始查重' : '开始识图';
-    if (exact) {
-      $('pageSub').textContent = S.dups.length ? `${S.dups.length} 组 · 可回收` : '按内容哈希比对';
-      renderDups(null);
-    } else {
-      $('pageSub').textContent = '按感知哈希找相似照片';
-      $('dupList').innerHTML = `<div class="empty-note">点击「开始识图」，会比对画面而非字节。<br>能找出同一张图的不同尺寸、不同压缩版本，以及轻微调色后的版本。</div>`;
-    }
   });
 });
 
@@ -1691,7 +1687,7 @@ document.querySelectorAll('#dupSize button').forEach(b => {
   });
 });
 $('dupScan').addEventListener('click', () => {
-  if (S.dupMode === 'similar') call('findSimilar', { tolerance: 14 });
+  if (S.dupMode === 'similar') call('findSimilar', { tolerance: 14, minSize: S.minSize });
   else if (S.dupMode === 'video') call('findDuplicateVideos', { minSize: S.minSize });
   else call('findDuplicates', { minSize: S.minSize });
 });

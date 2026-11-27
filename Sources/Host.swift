@@ -419,7 +419,8 @@ final class Bridge: NSObject, WKScriptMessageHandler, AppDropDelegate {
             startAppScan()
         case "findSimilar":
             let tol = (body["tolerance"] as? NSNumber)?.intValue ?? 14
-            startSimilar(tolerance: tol)
+            startSimilar(tolerance: tol,
+                         minSize: (body["minSize"] as? NSNumber)?.int64Value ?? 0)
         case "findDuplicateVideos":
             startDuplicates(minSize: (body["minSize"] as? NSNumber)?.int64Value ?? 10_485_760,
                             extensions: Self.videoExtensions)
@@ -922,14 +923,15 @@ final class Bridge: NSObject, WKScriptMessageHandler, AppDropDelegate {
 
     // MARK: 相似照片
 
-    private func startSimilar(tolerance: Int) {
+    private func startSimilar(tolerance: Int, minSize: Int64 = 0) {
         guard let result, !isSimilarRunning else { return }
         guard !result.allFiles.isEmpty else {
             emit(["type": "needRescan", "reason": "图片比对需要完整文件清单，请先重新扫描"])
             return
         }
         isSimilarRunning = true
-        let images = result.allFiles
+        // 体积筛选同样适用于照片：太小的图标/缩略图参与比对只会增加噪声
+        let images = result.allFiles.filter { $0.size >= minSize }
         emit(["type": "similarStarted"])
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
