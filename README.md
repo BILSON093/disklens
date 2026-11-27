@@ -60,7 +60,14 @@
 
 ## 安装
 
-从 [Releases](https://github.com/BILSON093/disklens/releases/latest) 下载 `DiskLens.app`，拖进「应用程序」即可。
+从 [Releases](https://github.com/BILSON093/disklens/releases/latest) 下载，两种形式：
+
+| 文件 | 用法 |
+|---|---|
+| `DiskLens-1.5.0-macOS-arm64.dmg` | **推荐**。双击打开镜像，把 DiskLens 拖进 Applications 文件夹 |
+| `DiskLens-1.5.0.zip` | 解压后得到 `.app`，自行拖进「应用程序」 |
+
+DMG 里的 Applications 是一个快捷方式，拖过去就是安装。
 
 首次打开若被 Gatekeeper 拦下，右键 →「打开」，或在终端执行：
 
