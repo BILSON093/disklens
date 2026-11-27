@@ -660,3 +660,71 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   .perm-detail { background: #1e2226; }
   .permission-bar.ok { background: rgba(255,255,255,.05); }
 }
+
+/* ---------- 应用列表：表头与分列 ---------- */
+.apphead {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 9px 6px;
+  font-size: 9.5px; color: var(--mute); letter-spacing: .02em;
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 2;
+  background: var(--bg);
+}
+.apphead .h-app { flex: 1; min-width: 0; padding-left: 38px; }
+.apphead .h-col { flex: 0 0 74px; width: 74px; text-align: right; }
+.apphead .h-lo { flex: 0 0 64px; width: 64px; }
+.apphead .h-sz { flex: 0 0 74px; width: 74px; }
+
+.approw .adate {
+  flex: 0 0 74px; width: 74px; text-align: right;
+  font-size: 10px; color: var(--sub);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.approw .locol {
+  flex: 0 0 64px; width: 64px;
+  display: flex; justify-content: flex-end; align-items: center;
+}
+.approw .asz { flex: 0 0 74px; width: 74px; }
+.loNone { font-style: normal; font-size: 9px; color: #c9cfd9; }
+.approw .aid { padding-right: 0; }
+
+@media (prefers-color-scheme: dark) {
+  .apphead { background: var(--bg); }
+  .approw .adate { color: var(--sub); }
+  .loNone { color: #4a515b; }
+}
+
+/* ---------- 应用列表：表头与分列 ---------- */
+.apphead {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 9px 6px;
+  font-size: 9.5px; color: var(--mute); letter-spacing: .02em;
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 2;
+  background: var(--bg);
+}
+.apphead .h-app { flex: 1; min-width: 0; padding-left: 38px; }
+.apphead .h-col { flex: 0 0 74px; width: 74px; text-align: right; }
+.apphead .h-lo { flex: 0 0 64px; width: 64px; }
+.apphead .h-sz { flex: 0 0 74px; width: 74px; }
+
+.approw .adate {
+  flex: 0 0 74px; width: 74px; text-align: right;
+  font-size: 10px; color: var(--sub);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.approw .locol {
+  flex: 0 0 64px; width: 64px;
+  display: flex; justify-content: flex-end; align-items: center;
+}
+.approw .asz { flex: 0 0 74px; width: 74px; }
+.loNone { font-style: normal; font-size: 9px; color: #c9cfd9; }
+.approw .aid { padding-right: 0; }
+
+@media (prefers-color-scheme: dark) {
+  .apphead { background: var(--bg); }
+  .approw .adate { color: var(--sub); }
+  .loNone { color: #4a515b; }
+}

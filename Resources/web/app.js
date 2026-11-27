@@ -16,8 +16,10 @@ const S = {
   sort: {
     app: { key: 'size', dir: -1 },
     junk: { key: 'size', dir: -1 },
-    dup: { key: 'reclaim', dir: -1 }
+    dup: { key: 'reclaim', dir: -1 },
+    large: { key: 'size', dir: -1 }
   },
+  appsSorted: false,
   deniedSamples: [],
   scanning: false, lastScan: null
 };
@@ -192,6 +194,7 @@ function handleEvent(e) {
 
     case 'appsDone':
       S.apps = e.apps || [];
+      S.appsSorted = false;
       S.appFocus = null;
       S.appSel = new Set();
       $('appBadge').textContent = e.count || '';
@@ -219,6 +222,15 @@ function handleEvent(e) {
             if (lo && a.leftovers.length) lo.textContent = `残留 ${a.leftovers.length}`;
           }
           if (S.appFocus && S.appFocus.path === e.path) renderAppPreview();
+          // 边算边排：节流重绘，避免每来一个就重排一次
+          const now = Date.now();
+          if (e.done >= e.total) {
+            S.appsSorted = true;
+            renderApps();
+          } else if (!S.appsSorted && now - (S.appLastRender || 0) > 350) {
+            S.appLastRender = now;
+            renderApps();
+          }
           const appTotal = S.apps.reduce((s2, x) => s2 + (x.size || 0), 0);
           const loTotal = S.apps.reduce((s2, x) => s2 + (x.leftoverSize || 0), 0);
           $('appsSummary').textContent =
@@ -390,10 +402,27 @@ function sortDups(groups) {
   return arr;
 }
 
+function sortLarge(list) {
+  const { key, dir } = S.sort.large;
+  const arr = list.slice();
+  arr.sort((a, b) => {
+    let r = 0;
+    if (key === 'size') r = cmpNum(a.size, b.size);
+    else if (key === 'name') r = cmpStr(a.name, b.name);
+    else if (key === 'idle') r = cmpNum(a.idleDays ?? -1, b.idleDays ?? -1);
+    else if (key === 'kind') r = cmpStr(a.kind || '', b.kind || '') || cmpNum(b.size, a.size);
+    return r * dir;
+  });
+  return arr;
+}
+
 function sortApps(list) {
   const { key, dir } = S.sort.app;
   const arr = list.slice();
   arr.sort((a, b) => {
+    // 体积未算出的先沉底，保证已算出的部分始终有序
+    const az = (a.size || 0) > 0, bz = (b.size || 0) > 0;
+    if (az !== bz) return az ? -1 : 1;
     let r = 0;
     if (key === 'size') r = cmpNum(a.size || 0, b.size || 0);
     else if (key === 'used') r = cmpStr(a.lastUsed || '', b.lastUsed || '');
@@ -771,7 +800,7 @@ function renderLarge() {
     return;
   }
 
-  box.innerHTML = S.large.map(f => {
+  box.innerHTML = sortLarge(S.large).map(f => {
     const on = S.largeSel.has(f.path);
     const cold = (f.idleDays ?? 0) >= 180;
     const idle = f.idleDays != null
@@ -914,6 +943,8 @@ function applyDupGroups(groups, similar) {
 /* ============ 卸载应用 ============ */
 function renderApps() {
   if (S.mode !== 'uninstall') return;
+  const scroller = $('appList');
+  const keepTop = scroller ? scroller.scrollTop : 0;
   const q = S.appQuery.trim().toLowerCase();
   const filtered = q
     ? S.apps.filter(a => a.name.toLowerCase().includes(q) || (a.bundleID || '').toLowerCase().includes(q))
@@ -926,22 +957,32 @@ function renderApps() {
     return;
   }
 
-  box.innerHTML = list.map(a => {
+  const head = `<div class="apphead">
+      <span class="h-app">应用</span>
+      <span class="h-col">最近使用</span>
+      <span class="h-col">安装</span>
+      <span class="h-col h-lo">残留</span>
+      <span class="h-col h-sz">大小</span>
+    </div>`;
+
+  box.innerHTML = head + list.map(a => {
     const focused = S.appFocus && S.appFocus.path === a.path;
     const lo = (a.leftovers || []).length;
-    const used = a.lastUsed ? ` · ${a.lastUsed.slice(0, 10)} 用过` : '';
     return `<div class="approw${focused ? ' focused' : ''}" data-path="${esc(a.path)}">
       <img class="aicon" data-icon-path="${esc(a.path)}" src="${S.appIcons[a.path] || ''}" alt="">
       <div class="ainfo">
         <div class="aname">${esc(a.name)}<span class="aver">${esc(a.version)}</span></div>
-        <div class="aid">${esc(a.bundleID || '无 bundle id')}${esc(used)}</div>
+        <div class="aid">${esc(a.bundleID || '无 bundle id')}</div>
       </div>
-      ${lo ? `<span class="loBadge" title="检测到 ${lo} 项残留">残留 ${lo}</span>` : ''}
+      <span class="adate" title="${a.lastUsed ? '最近使用：' + esc(a.lastUsed.slice(0, 10)) : '无记录'}">${a.lastUsed ? fmtDate(a.lastUsed) : '—'}</span>
+      <span class="adate" title="${a.installed ? '安装：' + esc(a.installed.slice(0, 10)) : '未知'}">${a.installed ? fmtDate(a.installed) : '—'}</span>
+      <span class="locol">${lo ? `<span class="loBadge">${lo}</span>` : '<i class="loNone">—</i>'}</span>
       <span class="asz">${a.size ? fmtSize(a.size) : '…'}</span>
     </div>`;
   }).join('');
 
   observeAppIcons();
+  if (scroller) scroller.scrollTop = keepTop;
 
   box.querySelectorAll('.approw').forEach(r => {
     r.addEventListener('click', () => {
@@ -1351,7 +1392,7 @@ $('junkTrash').addEventListener('click', () => {
   if (paths.length) call('trash', { paths });
 });
 
-$('appsRefresh').addEventListener('click', () => { S.apps = []; call('listApps'); });
+$('appsRefresh').addEventListener('click', () => { S.apps = []; S.appsSorted = false; call('listApps'); });
 $('appSearch').addEventListener('input', ev => { S.appQuery = ev.target.value; renderApps(); });
 $('appUninstall').addEventListener('click', () => {
   const a = S.appFocus;
@@ -1422,6 +1463,7 @@ function bindSort(selectId, dirId, key, rerender) {
 bindSort('appSort', 'appSortDir', 'app', () => { renderApps(); });
 bindSort('junkSort', 'junkSortDir', 'junk', () => { renderJunk(); });
 bindSort('dupSort', 'dupSortDir', 'dup', () => { renderDups(null); });
+bindSort('largeSort', 'largeSortDir', 'large', () => { renderLarge(); });
 
 /* ============ 图例 ============ */
 (function buildLegend() {
