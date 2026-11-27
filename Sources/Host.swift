@@ -381,6 +381,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
                 NSWorkspace.shared.open(url)
             }
+        case "appIcon":
+            if let p = body["path"] as? String {
+                emit(["type": "appIcon", "path": p, "data": AppScanner.iconDataURL(for: p)])
+            }
         case "thumbnail":
             if let p = body["path"] as? String {
                 makeThumbnail(path: p, size: (body["size"] as? NSNumber)?.doubleValue ?? 96)
@@ -471,6 +475,18 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         }
     }
 
+    /// 混合内容的目录用一组区分度更高的颜色
+    static let nodePalette = [
+        "#5b8ff9", "#61ddaa", "#f6bd16", "#7262fd", "#78d3f8",
+        "#9661bc", "#f6903d", "#008685", "#f08bb4", "#52c41a"
+    ]
+
+    static func paletteColor(_ name: String) -> String {
+        var h = 5381
+        for b in name.utf8 { h = (h &* 33) &+ Int(b) }
+        return nodePalette[abs(h) % nodePalette.count]
+    }
+
     /// 按路径逐级定位节点
     private func node(at path: String) -> FNode? {
         guard let res = result else { return nil }
@@ -495,9 +511,16 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         let base = path.hasSuffix("/") ? path : path + "/"
         let limited = node.children.prefix(400)
         let items: [[String: Any]] = limited.map { c in
+            // 主导类型占比不足 55%、或主要成分是"其他"时，按名字散列取色，
+            // 否则大片目录都会是同一个灰色，失去区分度
+            let share = c.size > 0 ? Double(c.kindSize) / Double(c.size) : 1
+            let mixed = c.isDir && (share < 0.55 || c.kind == .other)
             var d: [String: Any] = [
                 "name": c.name, "path": base + c.name, "size": c.size, "isDir": c.isDir,
-                "icon": c.icon, "kind": c.kind.rawValue, "color": c.kind.color
+                "icon": c.icon,
+                "kind": mixed ? "混合" : c.kind.rawValue,
+                "color": mixed ? Self.paletteColor(c.name) : c.kind.color,
+                "mixed": mixed
             ]
             if let m = c.modified { d["modified"] = ISO8601DateFormatter().string(from: m) }
             return d
@@ -645,7 +668,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 }
                 return [
                     "name": a.name, "path": a.path, "bundleID": a.bundleID,
-                    "version": a.version, "size": a.size, "icon": a.icon,
+                    "version": a.version, "size": a.size, "icon": "",
                     "isSystem": a.isSystem,
                     "leftoverSize": a.leftovers.reduce(Int64(0)) { $0 + $1.size },
                     "leftovers": items

@@ -11,6 +11,16 @@ enum ScanOnly {
         exit(0)
     }
 
+    /// 测试应用扫描：--apps
+    static func apps() {
+        let list = AppScanner.installedApps { _ in }
+        print("共 \(list.count) 个应用")
+        for a in list.prefix(6) {
+            print("  \(a.name) | id=\(a.bundleID.isEmpty ? "(空)" : a.bundleID) | iconLen=\(a.icon.count) | 残留=\(a.leftovers.count)")
+        }
+        exit(0)
+    }
+
     static func run(path: String) {
         let url = URL(fileURLWithPath: path)
         let engine = ScanEngine()

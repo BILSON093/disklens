@@ -8,9 +8,9 @@ const S = {
   junk: [], junkSel: new Set(), junkFilter: null,
   dups: [], dupSel: new Set(), dupKeep: {}, dupFocus: null,
   thumbs: {}, thumbPending: {},
-  kinds: [], apps: [], kindMode: 'kinds',
+  kinds: [], appStats: [], kindMode: 'kinds',
   large: [], largeSel: new Set(), largeMin: 524288000,
-  apps: [], appSel: new Set(), appFocus: null, appQuery: '',
+  apps: [], appSel: new Set(), appFocus: null, appQuery: '', appIcons: {},
   dupMode: 'exact',
   minSize: 1048576,
   scanning: false, lastScan: null
@@ -148,7 +148,7 @@ function handleEvent(e) {
 
     case 'aggregates':
       S.kinds = e.kinds || [];
-      S.apps = e.apps || [];
+      S.appStats = e.apps || [];
       if (S.mode === 'kinds') renderKinds();
       break;
 
@@ -179,7 +179,10 @@ function handleEvent(e) {
       $('appBadge').textContent = e.count || '';
       $('appsSummary').textContent =
         `${e.count} 个应用 · 正在统计体积 · 残留 ${fmtSize(e.leftoverSize)}`;
-      if (S.mode === 'uninstall') { renderApps(); renderAppPreview(); }
+      if (S.mode === 'uninstall') {
+        $('pageSub').textContent = `${e.count} 个应用 · 正在统计体积`;
+        renderApps(); renderAppPreview();
+      }
       break;
 
     case 'appDetail': {
@@ -296,6 +299,13 @@ function handleEvent(e) {
 
     case 'thumbnail':
       applyThumb(e.path, e.data || '');
+      break;
+
+    case 'appIcon':
+      S.appIcons[e.path] = e.data || '';
+      document.querySelectorAll(`img.aicon[data-icon-path="${CSS.escape(e.path)}"]`).forEach(img => {
+        img.src = e.data || '';
+      });
       break;
 
     case 'folderChosen':
@@ -657,7 +667,7 @@ function renderKinds() {
   const useKinds = S.kindMode === 'kinds';
   const rows = useKinds
     ? S.kinds.map(k => ({ name: k.kind, size: k.size, count: k.count, color: k.color, sub: `${fmtCount(k.count)} 个文件` }))
-    : S.apps.map(a => ({ name: a.name, size: a.size, count: a.count, color: a.color, sub: `${fmtCount(a.count)} 个文件` }));
+    : S.appStats.map(a => ({ name: a.name, size: a.size, count: a.count, color: a.color, sub: `${fmtCount(a.count)} 个文件` }));
 
   const total = Math.max(S.lastScan ? S.lastScan.totalSize : rows.reduce((s, r) => s + r.size, 0), 1);
   $('kindsSummary').textContent = useKinds
@@ -855,7 +865,7 @@ function renderApps() {
     const focused = S.appFocus && S.appFocus.path === a.path;
     const lo = (a.leftovers || []).length;
     return `<div class="approw${focused ? ' focused' : ''}" data-idx="${idx}" data-path="${esc(a.path)}">
-      <img class="aicon" src="${a.icon || ''}" alt="">
+      <img class="aicon" data-icon-path="${esc(a.path)}" src="${S.appIcons[a.path] || ''}" alt="">
       <div class="ainfo">
         <div class="aname">${esc(a.name)}<span class="aver">${esc(a.version)}</span></div>
         <div class="aid">${esc(a.bundleID || '无 bundle id')}</div>
@@ -865,6 +875,8 @@ function renderApps() {
     </div>`;
   }).join('');
 
+  observeAppIcons();
+
   box.querySelectorAll('.approw').forEach(r => {
     r.addEventListener('click', () => {
       S.appFocus = S.apps[Number(r.dataset.idx)];
@@ -873,6 +885,23 @@ function renderApps() {
       renderAppPreview();
     });
   });
+}
+
+let appIconObserver = null;
+function observeAppIcons() {
+  const root = $('appList');
+  if (appIconObserver) appIconObserver.disconnect();
+  appIconObserver = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if (!en.isIntersecting) return;
+      const img = en.target;
+      appIconObserver.unobserve(img);
+      const p = img.dataset.iconPath;
+      if (!p || S.appIcons[p] !== undefined) return;
+      call('appIcon', { path: p });
+    });
+  }, { root, rootMargin: '120px' });
+  root.querySelectorAll('img.aicon[data-icon-path]').forEach(img => appIconObserver.observe(img));
 }
 
 function renderAppPreview() {
@@ -1227,7 +1256,12 @@ $('largeTrash').addEventListener('click', () => {
   if (paths.length) call('trash', { paths });
 });
 
-$('junkSelectAll').addEventListener('click', () => { S.junk.forEach(j => S.junkSel.add(j.path)); renderJunk(); });
+$('junkSelectAll').addEventListener('click', () => {
+  // 有分类筛选时只选中当前这一类
+  const list = S.junkFilter ? S.junk.filter(j => j.category === S.junkFilter) : S.junk;
+  list.forEach(j => S.junkSel.add(j.path));
+  renderJunk();
+});
 $('junkSelectSafe').addEventListener('click', () => {
   S.junkSel.clear();
   S.junk.forEach(j => { if (j.risk === '安全') S.junkSel.add(j.path); });
@@ -1291,7 +1325,8 @@ $('dupTrash').addEventListener('click', () => {
 (function buildLegend() {
   const order = ['视频', '图片', '音频', '代码', '压缩包', '文档', '应用', '数据', '其他'];
   $('legend').innerHTML = `<label>颜色代表类型</label><div class="legend-grid">` +
-    order.map(k => `<span><i style="background:${KIND_COLORS[k]}"></i>${k}</span>`).join('') + `</div>`;
+    order.map(k => `<span><i style="background:${KIND_COLORS[k]}"></i>${k}</span>`).join('') +
+    `</div><div class="legend-note">无法归类或内容混杂的目录用区分色</div>`;
 })();
 
 /* ============ 初始化 ============ */

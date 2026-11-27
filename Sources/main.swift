@@ -1,6 +1,11 @@
 import AppKit
 import Foundation
 
+// 命令行应用扫描测试
+if CommandLine.arguments.contains("--apps") {
+    ScanOnly.apps()
+}
+
 // 命令行删除测试
 if let i = CommandLine.arguments.firstIndex(of: "--trash"), i + 1 < CommandLine.arguments.count {
     ScanOnly.trash(paths: CommandLine.arguments[i + 1].split(separator: ",").map(String.init))

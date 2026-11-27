@@ -83,7 +83,7 @@ enum AppScanner {
             bundleID: bundleID,
             version: version,
             size: size,
-            icon: iconDataURL(for: path),
+            icon: "",   // 图标按需加载，避免一次性传输数 MB
             leftovers: leftovers,
             isSystem: path.hasPrefix("/System/")
         )
@@ -104,7 +104,7 @@ enum AppScanner {
         return total
     }
 
-    private static func iconDataURL(for path: String) -> String {
+    static func iconDataURL(for path: String) -> String {
         let img = NSWorkspace.shared.icon(forFile: path)
         let side: CGFloat = 64
         let target = NSImage(size: NSSize(width: side, height: side))

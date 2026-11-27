@@ -321,7 +321,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .dup-progress span { font-size: 10px; color: var(--mute); min-width: 150px; }
 
 .duplist { flex: 1; overflow-y: auto; padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; }
-.group { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; }
+.group { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; flex: 0 0 auto; }
 .group-head {
   display: flex; align-items: center; gap: 8px;
   padding: 7px 11px; background: #fbfbfc;
@@ -622,3 +622,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 @media (prefers-color-scheme: dark) {
   .zoomHint { background: rgba(32,36,41,.78); }
 }
+
+/* 列表容器用 flex column 时，子项必须禁止压缩，否则大量分组会被压成细线 */
+.duplist > * { flex: 0 0 auto; }
+.legend-note { font-size: 9px; color: var(--mute); margin-top: 5px; line-height: 1.5; }
