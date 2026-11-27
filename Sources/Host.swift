@@ -410,6 +410,18 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         }
     }
 
+    /// 能否读取受 TCC 保护的目录（等价于完全磁盘访问是否生效）
+    private static func hasFullDiskAccess() -> Bool {
+        let probes = [
+            NSHomeDirectory() + "/Library/Safari",
+            "/Library/Application Support/com.apple.TCC"
+        ]
+        for p in probes {
+            if (try? FileManager.default.contentsOfDirectory(atPath: p)) != nil { return true }
+        }
+        return false
+    }
+
     // MARK: 扫描
 
     private func startScan(path: String) {
@@ -456,7 +468,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 "fileCount": res.fileCount,
                 "dirCount": res.dirCount,
                 "deniedCount": res.denied.count,
-                "deniedSamples": Array(res.denied.prefix(6)),
+                "deniedSamples": Array(res.denied.prefix(8)),
+                "hasFDA": Self.hasFullDiskAccess(),
                 "duration": res.duration,
                 "junkCount": merged.count,
                 "junkSize": merged.reduce(Int64(0)) { $0 + $1.size },
@@ -669,6 +682,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 return [
                     "name": a.name, "path": a.path, "bundleID": a.bundleID,
                     "version": a.version, "size": a.size, "icon": "",
+                    "lastUsed": a.lastUsed.map { ISO8601DateFormatter().string(from: $0) } ?? "",
+                    "installed": a.installed.map { ISO8601DateFormatter().string(from: $0) } ?? "",
                     "isSystem": a.isSystem,
                     "leftoverSize": a.leftovers.reduce(Int64(0)) { $0 + $1.size },
                     "leftovers": items

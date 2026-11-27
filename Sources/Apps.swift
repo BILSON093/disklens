@@ -19,6 +19,8 @@ struct AppInfo {
     let icon: String
     let leftovers: [Leftover]
     let isSystem: Bool
+    let lastUsed: Date?
+    let installed: Date?
 }
 
 enum AppScanner {
@@ -77,6 +79,11 @@ enum AppScanner {
         let size: Int64 = 0   // 体积稍后增量计算，避免阻塞列表
         let leftovers = findLeftovers(bundleID: bundleID, appName: display,
                                       appPath: path)
+        // 主可执行文件的访问时间最接近"上次启动"，拿不到就用 bundle 自身
+        let execName = info["CFBundleExecutable"] as? String
+        var used = execName.flatMap { accessTime(path + "/Contents/MacOS/" + $0) }
+        if used == nil { used = accessTime(path) }
+        var installedDate = modifiedTime(path)
         return AppInfo(
             path: path,
             name: display,
@@ -85,8 +92,23 @@ enum AppScanner {
             size: size,
             icon: "",   // 图标按需加载，避免一次性传输数 MB
             leftovers: leftovers,
-            isSystem: path.hasPrefix("/System/")
+            isSystem: path.hasPrefix("/System/"),
+            lastUsed: used,
+            installed: installedDate
         )
+    }
+
+    private static func accessTime(_ path: String) -> Date? {
+        var st = stat()
+        guard lstat(path, &st) == 0 else { return nil }
+        let t = st.st_atimespec.tv_sec
+        return t > 0 ? Date(timeIntervalSince1970: TimeInterval(t)) : nil
+    }
+
+    private static func modifiedTime(_ path: String) -> Date? {
+        var st = stat()
+        guard lstat(path, &st) == 0 else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(st.st_mtimespec.tv_sec))
     }
 
     static func directorySize(path: String) -> Int64 {

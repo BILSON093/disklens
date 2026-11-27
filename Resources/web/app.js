@@ -13,6 +13,12 @@ const S = {
   apps: [], appSel: new Set(), appFocus: null, appQuery: '', appIcons: {},
   dupMode: 'exact',
   minSize: 1048576,
+  sort: {
+    app: { key: 'size', dir: -1 },
+    junk: { key: 'size', dir: -1 },
+    dup: { key: 'reclaim', dir: -1 }
+  },
+  deniedSamples: [],
   scanning: false, lastScan: null
 };
 
@@ -111,9 +117,21 @@ function handleEvent(e) {
       }
       $('pageSub').textContent = sub;
 
+      S.deniedSamples = e.deniedSamples || [];
       if (e.deniedCount > 0) {
+        const ok = !!e.hasFDA;
         $('permBar').hidden = false;
-        $('permText').textContent = `有 ${fmtCount(e.deniedCount)} 个目录因权限不足被跳过，统计结果可能偏小。`;
+        $('permBar').classList.toggle('ok', ok);
+        $('permText').textContent = ok
+          ? `有 ${fmtCount(e.deniedCount)} 个系统级目录受保护（如 /private/var/db），属正常现象`
+          : `有 ${fmtCount(e.deniedCount)} 个目录无法读取 · 完全磁盘访问尚未生效`;
+        $('permOpen').hidden = ok;
+        $('permDetail').hidden = S.deniedSamples.length === 0;
+        $('permBox').hidden = true;
+        $('permBox').dataset.fda = ok ? '1' : '0';
+      } else {
+        $('permBar').hidden = true;
+        $('permBox').hidden = true;
       }
 
       $('junkBadge').textContent = e.junkCount || '';
@@ -338,6 +356,52 @@ function renderDisk(e) {
   bar.style.width = (used * 100).toFixed(1) + '%';
   bar.className = used > 0.9 ? 'hot' : (used > 0.8 ? 'warn' : '');
   $('diskSub').textContent = `共 ${fmtSize(e.total)} · 已用 ${Math.round(used * 100)}%`;
+}
+
+/* ============ 排序 ============ */
+function cmpNum(a, b) { return a > b ? 1 : (a < b ? -1 : 0); }
+function cmpStr(a, b) { return String(a).localeCompare(String(b), 'zh-CN'); }
+
+function sortJunk(list) {
+  const { key, dir } = S.sort.junk;
+  const arr = list.slice();
+  arr.sort((a, b) => {
+    let r = 0;
+    if (key === 'size') r = cmpNum(a.size, b.size);
+    else if (key === 'name') r = cmpStr(a.name, b.name);
+    else if (key === 'category') r = cmpStr(a.category, b.category) || cmpNum(b.size, a.size);
+    else if (key === 'risk') r = cmpStr(a.risk, b.risk) || cmpNum(b.size, a.size);
+    return r * dir;
+  });
+  return arr;
+}
+
+function sortDups(groups) {
+  const { key, dir } = S.sort.dup;
+  const arr = groups.slice();
+  arr.sort((a, b) => {
+    let r = 0;
+    if (key === 'reclaim') r = cmpNum(a.reclaimable || 0, b.reclaimable || 0);
+    else if (key === 'size') r = cmpNum(a.size, b.size);
+    else if (key === 'count') r = cmpNum(a.files.length, b.files.length);
+    else if (key === 'name') r = cmpStr(a.files[0] ? a.files[0].name : '', b.files[0] ? b.files[0].name : '');
+    return r * dir;
+  });
+  return arr;
+}
+
+function sortApps(list) {
+  const { key, dir } = S.sort.app;
+  const arr = list.slice();
+  arr.sort((a, b) => {
+    let r = 0;
+    if (key === 'size') r = cmpNum(a.size || 0, b.size || 0);
+    else if (key === 'used') r = cmpStr(a.lastUsed || '', b.lastUsed || '');
+    else if (key === 'installed') r = cmpStr(a.installed || '', b.installed || '');
+    else if (key === 'name') r = cmpStr(a.name, b.name);
+    return r * dir;
+  });
+  return arr;
 }
 
 /* ============ 树图 ============ */
@@ -769,7 +833,8 @@ function renderJunk() {
 
   renderJunkChips();
 
-  const list = S.junkFilter ? S.junk.filter(j => j.category === S.junkFilter) : S.junk;
+  const filtered = S.junkFilter ? S.junk.filter(j => j.category === S.junkFilter) : S.junk;
+  const list = sortJunk(filtered);
   const box = $('junkTable');
   if (!list.length) {
     box.innerHTML = `<div class="empty-note">${S.lastScan ? '这个范围内没有发现明显垃圾文件。' : '先扫描一个目录，再来看这里。'}</div>`;
@@ -850,9 +915,10 @@ function applyDupGroups(groups, similar) {
 function renderApps() {
   if (S.mode !== 'uninstall') return;
   const q = S.appQuery.trim().toLowerCase();
-  const list = q
+  const filtered = q
     ? S.apps.filter(a => a.name.toLowerCase().includes(q) || (a.bundleID || '').toLowerCase().includes(q))
     : S.apps;
+  const list = sortApps(filtered);
 
   const box = $('appList');
   if (!list.length) {
@@ -860,15 +926,15 @@ function renderApps() {
     return;
   }
 
-  box.innerHTML = list.map((a, i) => {
-    const idx = S.apps.indexOf(a);
+  box.innerHTML = list.map(a => {
     const focused = S.appFocus && S.appFocus.path === a.path;
     const lo = (a.leftovers || []).length;
-    return `<div class="approw${focused ? ' focused' : ''}" data-idx="${idx}" data-path="${esc(a.path)}">
+    const used = a.lastUsed ? ` · ${a.lastUsed.slice(0, 10)} 用过` : '';
+    return `<div class="approw${focused ? ' focused' : ''}" data-path="${esc(a.path)}">
       <img class="aicon" data-icon-path="${esc(a.path)}" src="${S.appIcons[a.path] || ''}" alt="">
       <div class="ainfo">
         <div class="aname">${esc(a.name)}<span class="aver">${esc(a.version)}</span></div>
-        <div class="aid">${esc(a.bundleID || '无 bundle id')}</div>
+        <div class="aid">${esc(a.bundleID || '无 bundle id')}${esc(used)}</div>
       </div>
       ${lo ? `<span class="loBadge" title="检测到 ${lo} 项残留">残留 ${lo}</span>` : ''}
       <span class="asz">${a.size ? fmtSize(a.size) : '…'}</span>
@@ -879,7 +945,7 @@ function renderApps() {
 
   box.querySelectorAll('.approw').forEach(r => {
     r.addEventListener('click', () => {
-      S.appFocus = S.apps[Number(r.dataset.idx)];
+      S.appFocus = S.apps.find(x => x.path === r.dataset.path);
       S.appSel = new Set((S.appFocus.leftovers || []).map(l => l.path));
       box.querySelectorAll('.approw').forEach(x => x.classList.toggle('focused', x === r));
       renderAppPreview();
@@ -982,7 +1048,9 @@ function renderDups(done) {
     renderDupPreview(); updateDupSel(); return;
   }
 
-  box.innerHTML = S.dups.map((g, gi) => {
+  const ordered = sortDups(S.dups);
+  box.innerHTML = ordered.map(g => {
+    const gi = S.dups.indexOf(g);
     const keepPath = S.dupKeep[g.hash];
     const rows = g.files.map(f => {
       const kept = f.path === keepPath;
@@ -1229,6 +1297,16 @@ $('btnExport').addEventListener('click', () => {
   call('export', { scope });
 });
 $('permOpen').addEventListener('click', () => call('openPrivacy'));
+$('permDetail').addEventListener('click', () => {
+  const box = $('permBox');
+  if (!box.hidden) { box.hidden = true; return; }
+  const fda = box.dataset.fda === '1';
+  const head = fda
+    ? '以下目录即使拥有完全磁盘访问也无法读取（系统保护或需要 root 权限），不影响用户数据统计：'
+    : '磁盘访问授权未生效。本应用为 ad-hoc 签名，重新编译后系统会视为新程序，需要在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」中移除 DiskLens 再重新添加。被跳过的目录：';
+  box.innerHTML = `<div class="ph">${head}</div>` + (S.deniedSamples || []).map(p => esc(p)).join('<br>');
+  box.hidden = false;
+});
 $('permDismiss').addEventListener('click', () => { $('permBar').hidden = true; });
 
 document.querySelectorAll('#kindMode button').forEach(b => {
@@ -1320,6 +1398,30 @@ $('dupTrash').addEventListener('click', () => {
   const paths = Array.from(S.dupSel);
   if (paths.length) call('trash', { paths });
 });
+
+/* ============ 排序控件绑定 ============ */
+function bindSort(selectId, dirId, key, rerender) {
+  const sel = $(selectId), btn = $(dirId);
+  if (!sel || !btn) return;
+  sel.value = S.sort[key].key;
+  btn.textContent = S.sort[key].dir === 1 ? '↑' : '↓';
+  btn.title = S.sort[key].dir === 1 ? '当前升序，点击改为降序' : '当前降序，点击改为升序';
+
+  sel.addEventListener('change', () => {
+    S.sort[key].key = sel.value;
+    rerender();
+  });
+  btn.addEventListener('click', () => {
+    S.sort[key].dir *= -1;
+    btn.textContent = S.sort[key].dir === 1 ? '↑' : '↓';
+    btn.title = S.sort[key].dir === 1 ? '当前升序，点击改为降序' : '当前降序，点击改为升序';
+    rerender();
+  });
+}
+
+bindSort('appSort', 'appSortDir', 'app', () => { renderApps(); });
+bindSort('junkSort', 'junkSortDir', 'junk', () => { renderJunk(); });
+bindSort('dupSort', 'dupSortDir', 'dup', () => { renderDups(null); });
 
 /* ============ 图例 ============ */
 (function buildLegend() {

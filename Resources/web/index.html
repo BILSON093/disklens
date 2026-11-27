@@ -82,9 +82,11 @@
     <div class="permission-bar" id="permBar" hidden>
       <span id="permText"></span>
       <div class="spacer"></div>
+      <button class="mini" id="permDetail">查看目录</button>
       <button class="mini" id="permOpen">开启完全磁盘访问</button>
       <button class="mini" id="permDismiss">知道了</button>
     </div>
+    <div class="perm-detail" id="permBox" hidden></div>
 
     <!-- 空间树图 -->
     <section class="view" id="view-explorer">
@@ -144,7 +146,19 @@
     <!-- 垃圾文件 -->
     <section class="view" id="view-junk" hidden>
       <div class="pills" id="junkPills"></div>
-      <div class="chips" id="junkChips"></div>
+      <div class="chips-row">
+        <div class="chips" id="junkChips"></div>
+        <div class="spacer"></div>
+        <div class="sortbox">
+          <select class="selsort" id="junkSort">
+            <option value="size">大小</option>
+            <option value="name">名称</option>
+            <option value="category">类别</option>
+            <option value="risk">风险</option>
+          </select>
+          <button class="sortdir" id="junkSortDir" title="切换升序 / 降序">↓</button>
+        </div>
+      </div>
       <div class="table" id="junkTable"></div>
       <div class="actionbar">
         <button class="mini" id="junkSelectAll">全选</button>
@@ -162,6 +176,15 @@
         <input class="search" id="appSearch" placeholder="搜索应用或 bundle id">
         <div class="spacer"></div>
         <span class="selinfo" id="appsSummary">—</span>
+        <div class="sortbox">
+          <select class="selsort" id="appSort">
+            <option value="size">占用空间</option>
+            <option value="used">最近使用</option>
+            <option value="installed">安装时间</option>
+            <option value="name">名称</option>
+          </select>
+          <button class="sortdir" id="appSortDir" title="切换升序 / 降序">↓</button>
+        </div>
         <button class="primary" id="appsRefresh">重新分析</button>
       </div>
       <div class="dup-body">
@@ -195,6 +218,15 @@
           <button data-size="104857600">100 MB</button>
         </div>
         <div class="spacer"></div>
+        <div class="sortbox">
+          <select class="selsort" id="dupSort">
+            <option value="reclaim">可回收空间</option>
+            <option value="size">单个大小</option>
+            <option value="count">文件数</option>
+            <option value="name">名称</option>
+          </select>
+          <button class="sortdir" id="dupSortDir" title="切换升序 / 降序">↓</button>
+        </div>
         <button class="primary" id="dupScan">开始查重</button>
       </div>
       <div class="dup-progress" id="dupProgress" hidden>

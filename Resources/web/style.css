@@ -626,3 +626,37 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 /* 列表容器用 flex column 时，子项必须禁止压缩，否则大量分组会被压成细线 */
 .duplist > * { flex: 0 0 auto; }
 .legend-note { font-size: 9px; color: var(--mute); margin-top: 5px; line-height: 1.5; }
+
+/* ---------- 排序控件 ---------- */
+.sortbox { display: flex; align-items: center; gap: 4px; }
+.selsort {
+  border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text);
+  font: inherit; font-size: 11px; padding: 4px 6px; outline: none; cursor: default;
+}
+.selsort:focus { border-color: var(--accent); }
+.sortdir {
+  width: 26px; height: 25px; border: 1px solid var(--line); border-radius: 6px;
+  background: #fff; color: var(--sub); font: inherit; font-size: 12px; line-height: 1;
+  cursor: default;
+}
+.sortdir:hover { background: #f4f6f9; color: var(--text); }
+
+.chips-row { display: flex; align-items: center; gap: 10px; padding-right: 16px; }
+.chips-row .chips { flex: 1; padding-right: 0; }
+
+/* ---------- 权限提示 ---------- */
+.permission-bar.ok { background: rgba(0,0,0,.035); color: var(--sub); border-bottom-color: var(--line); }
+.perm-detail {
+  padding: 9px 16px; font-size: 10px; line-height: 1.8; color: var(--mute);
+  background: #fbfbfc; border-bottom: 1px solid var(--line);
+  font-family: ui-monospace, Menlo, monospace;
+  max-height: 160px; overflow-y: auto;
+}
+.perm-detail[hidden] { display: none; }
+.perm-detail .ph { color: var(--sub); font-family: -apple-system, sans-serif; margin-bottom: 4px; }
+
+@media (prefers-color-scheme: dark) {
+  .selsort, .sortdir { background: #262b31; }
+  .perm-detail { background: #1e2226; }
+  .permission-bar.ok { background: rgba(255,255,255,.05); }
+}
