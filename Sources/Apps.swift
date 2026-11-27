@@ -21,6 +21,7 @@ struct AppInfo {
     let isSystem: Bool
     let lastUsed: Date?
     let installed: Date?
+    let isRunning: Bool
 }
 
 enum AppScanner {
@@ -50,7 +51,7 @@ enum AppScanner {
 
         DispatchQueue.concurrentPerform(iterations: paths.count) { i in
             let p = paths[i]
-            let info = inspect(path: p)
+            let info = inspectApp(path: p)
             lock.lock()
             results[i] = info
             done += 1
@@ -64,7 +65,7 @@ enum AppScanner {
 
     // MARK: 单个应用
 
-    private static func inspect(path: String) -> AppInfo? {
+    static func inspectApp(path: String) -> AppInfo? {
         let url = URL(fileURLWithPath: path)
         guard let bundle = Bundle(url: url) else { return nil }
         let info = bundle.infoDictionary ?? [:]
@@ -94,7 +95,10 @@ enum AppScanner {
             leftovers: leftovers,
             isSystem: path.hasPrefix("/System/"),
             lastUsed: used,
-            installed: installedDate
+            installed: installedDate,
+            isRunning: NSWorkspace.shared.runningApplications.contains {
+                $0.bundleURL?.resolvingSymlinksInPath().path == url.resolvingSymlinksInPath().path
+            }
         )
     }
 

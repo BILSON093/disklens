@@ -728,3 +728,101 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   .approw .adate { color: var(--sub); }
   .loNone { color: #4a515b; }
 }
+
+/* ---------- 内存面板 ---------- */
+.mem-top { display: flex; gap: 14px; padding: 16px 16px 12px; }
+.mem-card {
+  flex: 1; min-width: 0; background: #fff; border: 1px solid var(--line);
+  border-radius: 10px; padding: 15px 18px 16px;
+}
+.mem-label { font-size: 10.5px; color: var(--sub); }
+.mem-big {
+  font-size: 34px; font-weight: 600; letter-spacing: -0.025em;
+  margin: 1px 0 2px; font-variant-numeric: tabular-nums;
+}
+.mem-sub { font-size: 10.5px; color: var(--mute); }
+.mem-bar {
+  display: flex; height: 12px; border-radius: 6px; overflow: hidden;
+  background: rgba(0,0,0,.05); margin: 15px 0 11px;
+}
+.mem-bar .seg { height: 100%; transition: width .35s ease; }
+.mem-bar .seg.app { background: #5b8ff9; }
+.mem-bar .seg.wired { background: #7262fd; }
+.mem-bar .seg.comp { background: #f6903d; }
+.mem-bar .seg.cache { background: #c3ccdb; }
+
+.mem-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 10px; color: var(--sub); }
+.mem-legend span { display: flex; align-items: center; gap: 5px; }
+.mem-legend b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.mem-legend .dot { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
+.mem-legend .dot.app { background: #5b8ff9; }
+.mem-legend .dot.wired { background: #7262fd; }
+.mem-legend .dot.comp { background: #f6903d; }
+.mem-legend .dot.cache { background: #c3ccdb; }
+
+.mem-actions { display: flex; align-items: center; gap: 12px; margin-top: 17px; }
+.mem-hint { font-size: 10px; color: var(--mute); }
+
+.mem-side { flex: 0 0 208px; display: flex; flex-direction: column; gap: 9px; }
+.mem-pressure { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.mp-label { font-size: 10px; color: var(--mute); }
+.mp-value { font-size: 19px; font-weight: 600; margin: 2px 0 9px; letter-spacing: -0.01em; }
+.mp-value.warn { color: var(--orange); }
+.mp-value.bad { color: var(--red); }
+.mp-bar { height: 6px; border-radius: 3px; background: rgba(0,0,0,.06); overflow: hidden; }
+.mp-bar i { display: block; height: 100%; background: var(--green); transition: width .35s; }
+.mp-bar i.warn { background: var(--orange); }
+.mp-bar i.bad { background: var(--red); }
+.mem-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; padding: 8px 13px; background: #fff;
+  border: 1px solid var(--line); border-radius: 8px;
+}
+.mem-row span { color: var(--sub); }
+.mem-row b { font-variant-numeric: tabular-nums; }
+
+.proc-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--line); }
+.proc-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px 8px; font-size: 11px; font-weight: 600; }
+.proc-head em { font-style: normal; font-weight: 400; font-size: 9.5px; color: var(--mute); }
+.proclist { flex: 1; overflow-y: auto; padding: 0 16px 16px; }
+.prow {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 8px; border-bottom: 1px solid #f3f4f7; font-size: 11.5px;
+}
+.prow:hover { background: rgba(0,0,0,.02); }
+.pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pid { width: 56px; text-align: right; color: var(--mute); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.prss { width: 76px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.quitbtn {
+  border: 1px solid var(--line); background: #fff; color: var(--sub);
+  border-radius: 5px; font: inherit; font-size: 10px; padding: 3px 9px; cursor: default;
+  width: 62px;
+}
+.quitbtn:hover { color: var(--text); }
+.quitbtn.warn { background: var(--red); border-color: var(--red); color: #fff; }
+
+/* ---------- 拖拽覆盖层 ---------- */
+.drop-overlay {
+  position: fixed; inset: 0; z-index: 900;
+  background: rgba(18, 24, 38, .58);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(3px);
+}
+.drop-overlay[hidden] { display: none; }
+.drop-inner {
+  border: 2px dashed rgba(255,255,255,.6); border-radius: 20px;
+  padding: 44px 70px; text-align: center; color: #fff;
+}
+.drop-inner svg {
+  width: 62px; height: 62px; fill: none; stroke: #fff;
+  stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: .92;
+}
+.drop-inner h3 { font-size: 17px; font-weight: 600; margin: 15px 0 6px; }
+.drop-inner p { font-size: 11.5px; opacity: .82; }
+
+@media (prefers-color-scheme: dark) {
+  .mem-card, .mem-pressure, .mem-row, .quitbtn { background: #262b31; border-color: var(--line); }
+  .mem-bar { background: rgba(255,255,255,.08); }
+  .prow { border-bottom-color: #262b31; }
+  .prow:hover { background: rgba(255,255,255,.03); }
+}

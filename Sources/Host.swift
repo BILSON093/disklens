@@ -5,6 +5,60 @@ import QuickLookThumbnailing
 import UniformTypeIdentifiers
 import ImageIO
 
+// MARK: - 支持拖入应用的 WebView
+
+protocol AppDropDelegate: AnyObject {
+    func dragEntered(paths: [String])
+    func dragExited()
+    func dropped(paths: [String])
+}
+
+final class DropWebView: WKWebView {
+
+    weak var dropDelegate: AppDropDelegate?
+
+    override init(frame: CGRect, configuration: WKWebViewConfiguration) {
+        super.init(frame: frame, configuration: configuration)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    required init?(coder: NSCoder) { fatalError("not supported") }
+
+    private func filePaths(_ sender: NSDraggingInfo) -> [String] {
+        let urls = sender.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] ?? []
+        return urls.map { $0.resolvingSymlinksInPath().path }
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let paths = filePaths(sender)
+        guard !paths.isEmpty else { return [] }
+        dropDelegate?.dragEntered(paths: paths)
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        filePaths(sender).isEmpty ? [] : .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        dropDelegate?.dragExited()
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        !filePaths(sender).isEmpty
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let paths = filePaths(sender)
+        guard !paths.isEmpty else { return false }
+        dropDelegate?.dropped(paths: paths)
+        return true
+    }
+}
+
 // MARK: - 顶部拖动条
 
 /// WKWebView 内部有私有内容视图会先接走鼠标事件，
@@ -41,7 +95,7 @@ final class DragBarView: NSView {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     private var window: NSWindow!
-    private var webView: WKWebView!
+    private var webView: DropWebView!
     private let bridge = Bridge()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -51,9 +105,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         config.userContentController.add(bridge, name: "native")
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
 
-        webView = WKWebView(frame: .zero, configuration: config)
+        webView = DropWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = self
         bridge.attach(webView)
+        webView.dropDelegate = bridge
 
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1240, height: 820),
@@ -319,7 +374,7 @@ enum History {
 
 // MARK: - 通信桥
 
-final class Bridge: NSObject, WKScriptMessageHandler {
+final class Bridge: NSObject, WKScriptMessageHandler, AppDropDelegate {
 
     private weak var webView: WKWebView?
     weak var hostWindow: NSWindow?
@@ -381,6 +436,14 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
                 NSWorkspace.shared.open(url)
             }
+        case "memoryInfo":
+            sendMemory()
+        case "cleanMemory":
+            cleanMemory()
+        case "quitProcess":
+            if let pid = body["pid"] as? Int { quitProcess(pid: Int32(pid)) }
+        case "inspectApp":
+            if let p = body["path"] as? String { sendAppInfo(path: p) }
         case "appIcon":
             if let p = body["path"] as? String {
                 emit(["type": "appIcon", "path": p, "data": AppScanner.iconDataURL(for: p)])
@@ -659,6 +722,127 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             "hasFDA": Self.hasFullDiskAccess(),
             "scannedAt": ISO8601DateFormatter().string(from: snap.date)
         ])
+    }
+
+    // MARK: 拖拽
+
+    func dragEntered(paths: [String]) {
+        let apps = paths.filter { $0.hasSuffix(".app") }
+        emit(["type": "dragEnter", "appCount": apps.count, "fileCount": paths.count])
+    }
+
+    func dragExited() {
+        emit(["type": "dragExit"])
+    }
+
+    func dropped(paths: [String]) {
+        emit(["type": "dragExit"])
+        let apps = paths.filter { $0.hasSuffix(".app") }
+        guard !apps.isEmpty else {
+            emit(["type": "dropRejected",
+                  "reason": "只能拖入 .app 应用包（拖进来的是 \(paths.count) 个其它项）"])
+            return
+        }
+        if apps.count > 1 {
+            emit(["type": "dropInfo", "reason": "一次只处理一个应用，已取第一个"])
+        }
+        sendAppInfo(path: apps[0], focus: true)
+    }
+
+    // MARK: 内存
+
+    private func sendMemory() {
+        let s = MemoryScanner.stats()
+        let procs = MemoryScanner.topProcesses()
+        emit([
+            "type": "memory",
+            "total": s.total, "used": s.used, "appMemory": s.appMemory,
+            "wired": s.wired, "compressed": s.compressed, "cached": s.cached,
+            "free": s.free, "swapUsed": s.swapUsed, "pressure": s.pressure,
+            "processes": procs.map {
+                ["pid": Int($0.pid), "name": $0.name, "rss": $0.rss,
+                 "bundleID": $0.bundleID ?? ""]
+            }
+        ])
+    }
+
+    private func cleanMemory() {
+        let before = MemoryScanner.stats()
+        emit(["type": "memoryCleaning"])
+        MemoryScanner.purge { [weak self] ok, message in
+            guard let self else { return }
+            let after = MemoryScanner.stats()
+            let freed = before.used > after.used ? before.used - after.used : 0
+            self.emit([
+                "type": "memoryCleaned", "ok": ok, "message": message,
+                "freed": freed,
+                "stats": [
+                    "total": after.total, "used": after.used, "appMemory": after.appMemory,
+                    "wired": after.wired, "compressed": after.compressed,
+                    "cached": after.cached, "free": after.free,
+                    "swapUsed": after.swapUsed, "pressure": after.pressure
+                ]
+            ])
+            self.sendMemory()
+        }
+    }
+
+    private func quitProcess(pid: Int32) {
+        guard let app = NSRunningApplication(processIdentifier: pid) else {
+            emit(["type": "quitResult", "ok": false, "pid": Int(pid), "message": "该进程已不存在"])
+            return
+        }
+        let name = app.localizedName ?? "该进程"
+        let ok = app.terminate()
+        emit(["type": "quitResult", "ok": ok, "pid": Int(pid),
+              "message": ok ? "已请求退出 \(name)" : "退出 \(name) 失败，可能需要在系统中确认"])
+    }
+
+    // MARK: 单个应用信息
+
+    private func sendAppInfo(path: String, focus: Bool = false) {
+        guard FileManager.default.fileExists(atPath: path) else {
+            emit(["type": "appInfoFailed", "path": path, "reason": "找不到这个应用，可能已被移除"])
+            return
+        }
+        // 体积要遍历目录，放到后台算，避免卡住界面
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            guard var a = AppScanner.inspectApp(path: path) else {
+                self.emit(["type": "appInfoFailed", "path": path,
+                           "reason": "无法读取应用的 Info.plist，可能不是标准 .app 包"])
+                return
+            }
+            a.size = AppScanner.directorySize(path: path)
+
+            // 逐个算出残留体积
+            var leftovers: [Leftover] = []
+            for l in a.leftovers {
+                leftovers.append(Leftover(path: l.path, label: l.label,
+                                          size: AppScanner.sizeOf(l.path), risk: l.risk))
+            }
+            a = AppInfo(path: a.path, name: a.name, bundleID: a.bundleID, version: a.version,
+                        size: a.size, icon: a.icon, leftovers: leftovers,
+                        isSystem: a.isSystem, lastUsed: a.lastUsed, installed: a.installed,
+                        isRunning: a.isRunning)
+
+            self.emit(["type": "appInfo", "app": self.appPayload(a), "focus": focus])
+        }
+    }
+
+    private func appPayload(_ a: AppInfo) -> [String: Any] {
+        let items: [[String: Any]] = a.leftovers.map {
+            ["path": $0.path, "label": $0.label, "size": $0.size, "risk": $0.risk]
+        }
+        return [
+            "name": a.name, "path": a.path, "bundleID": a.bundleID,
+            "version": a.version, "size": a.size, "icon": "",
+            "lastUsed": a.lastUsed.map { ISO8601DateFormatter().string(from: $0) } ?? "",
+            "installed": a.installed.map { ISO8601DateFormatter().string(from: $0) } ?? "",
+            "isSystem": a.isSystem, "isRunning": a.isRunning,
+            "leftoverSize": a.leftovers.reduce(Int64(0)) { $0 + $1.size },
+            "leftovers": items
+        ]
     }
 
     // MARK: 已安装应用

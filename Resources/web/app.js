@@ -12,6 +12,8 @@ const S = {
   large: [], largeSel: new Set(), largeMin: 524288000,
   apps: [], appSel: new Set(), appFocus: null, appQuery: '', appIcons: {}, appIconPending: {},
   dupMode: 'exact',
+  memTimer: null, memCleaning: false, memLast: null,
+  pendingApp: null,
   minSize: 1048576,
   sort: {
     app: { key: 'size', dir: -1 },
@@ -196,13 +198,24 @@ function handleEvent(e) {
       S.apps = e.apps || [];
       S.appsSorted = false;
       S.appFocus = null;
+
+      // 若是拖入触发，列表回来后重新聚焦到那个应用
+      if (S.pendingApp) {
+        if (!S.apps.some(a => a.path === S.pendingApp.path)) S.apps.unshift(S.pendingApp);
+      }
       S.appSel = new Set();
       $('appBadge').textContent = e.count || '';
       $('appsSummary').textContent =
         `${e.count} 个应用 · 正在统计体积 · 残留 ${fmtSize(e.leftoverSize)}`;
       if (S.mode === 'uninstall') {
         $('pageSub').textContent = `${e.count} 个应用 · 正在统计体积`;
-        renderApps(); renderAppPreview();
+        renderApps();
+        if (S.pendingApp) {
+          applyFocus(S.pendingApp.path);
+          S.pendingApp = null;
+        } else {
+          renderAppPreview();
+        }
       }
       break;
 
@@ -335,6 +348,66 @@ function handleEvent(e) {
       applyThumb(e.path, e.data || '');
       break;
 
+    case 'memory':
+      S.memLast = e;
+      renderMemory(e);
+      break;
+
+    case 'memoryCleaning':
+      S.memCleaning = true;
+      $('memClean').disabled = true;
+      $('memClean').textContent = '清理中…';
+      $('memHint').textContent = '正在请求系统清理缓存…';
+      break;
+
+    case 'memoryCleaned': {
+      S.memCleaning = false;
+      $('memClean').disabled = false;
+      $('memClean').textContent = '一键释放';
+      if (e.ok) {
+        $('memHint').textContent = e.freed > 0
+          ? `已释放 ${fmtSize(e.freed)}`
+          : '缓存已经比较干净，本次没有明显可释放的空间';
+        toast(e.freed > 0 ? `已释放 ${fmtSize(e.freed)}` : '没有可释放的内存');
+      } else {
+        $('memHint').textContent = e.message || '清理未完成';
+        toast(e.message || '清理未完成');
+      }
+      break;
+    }
+
+    case 'quitResult':
+      toast(e.message);
+      setTimeout(() => { if (S.mode === 'memory') call('memoryInfo'); }, 800);
+      break;
+
+    case 'dragEnter':
+      $('dropOverlay').hidden = false;
+      $('dropHint').textContent = e.appCount > 0
+        ? `识别到 ${e.appCount} 个应用，松开即可查看卸载选项`
+        : '只能卸载 .app 应用包';
+      break;
+
+    case 'dragExit':
+      $('dropOverlay').hidden = true;
+      break;
+
+    case 'dropRejected':
+      toast(e.reason || '无法识别拖入的内容');
+      break;
+
+    case 'dropInfo':
+      toast(e.reason || '');
+      break;
+
+    case 'appInfo':
+      focusDroppedApp(e.app);
+      break;
+
+    case 'appInfoFailed':
+      toast(e.reason || '无法读取该应用');
+      break;
+
     case 'appIcon':
       S.appIcons[e.path] = e.data || '';
       delete S.appIconPending[e.path];
@@ -373,6 +446,107 @@ function renderDisk(e) {
   bar.style.width = (used * 100).toFixed(1) + '%';
   bar.className = used > 0.9 ? 'hot' : (used > 0.8 ? 'warn' : '');
   $('diskSub').textContent = `共 ${fmtSize(e.total)} · 已用 ${Math.round(used * 100)}%`;
+}
+
+/* ============ 拖入应用 ============ */
+function focusDroppedApp(app) {
+  if (!app) return;
+  S.pendingApp = app;
+
+  const existing = S.apps.findIndex(a => a.path === app.path);
+  if (existing >= 0) S.apps[existing] = Object.assign({}, S.apps[existing], app);
+  else S.apps.unshift(app);
+
+  const tab = document.querySelector('[data-mode="uninstall"]');
+  if (tab) tab.click();
+
+  applyFocus(app.path);
+  // 列表里没有其它应用时，后台拉一次完整列表
+  if (S.apps.length <= 1) call('listApps');
+  if (S.appIcons[app.path] === undefined) {
+    S.appIconPending[app.path] = true;
+    call('appIcon', { path: app.path });
+  }
+}
+
+function applyFocus(path) {
+  const a = S.apps.find(x => x.path === path);
+  if (!a) return;
+  S.appFocus = a;
+  S.appSel = new Set((a.leftovers || []).map(l => l.path));
+  renderApps();
+  renderAppPreview();
+  const row = document.querySelector(`.approw[data-path="${CSS.escape(path)}"]`);
+  if (row) row.scrollIntoView({ block: 'center' });
+}
+
+/* ============ 内存 ============ */
+function renderMemory(e) {
+  if (S.mode !== 'memory') return;
+  const pct = e.total ? (e.used / e.total) * 100 : 0;
+  const pctOf = v => e.total ? Math.max(0, (v / e.total) * 100) : 0;
+
+  $('memUsed').textContent = fmtSize(e.used);
+  $('memSub').textContent = `共 ${fmtSize(e.total)} · 空闲 ${fmtSize(e.free)} · 文件缓存 ${fmtSize(e.cached)}`;
+  $('memApp').textContent = fmtSize(e.appMemory);
+  $('memWired').textContent = fmtSize(e.wired);
+  $('memComp').textContent = fmtSize(e.compressed);
+  $('memCache').textContent = fmtSize(e.cached);
+  $('memFree').textContent = fmtSize(e.free);
+  $('memSwap').textContent = e.swapUsed > 0 ? fmtSize(e.swapUsed) : '未使用';
+
+  $('segApp').style.width = pctOf(e.appMemory) + '%';
+  $('segWired').style.width = pctOf(e.wired) + '%';
+  $('segComp').style.width = pctOf(e.compressed) + '%';
+  $('segCache').style.width = pctOf(e.cached) + '%';
+
+  const p = Math.round((e.pressure || 0) * 100);
+  const level = p > 75 ? '紧张' : (p > 50 ? '偏高' : '正常');
+  $('memPressure').textContent = `${level} ${p}%`;
+  $('memPressure').className = 'mp-value ' + (p > 75 ? 'bad' : (p > 50 ? 'warn' : ''));
+  $('memPressureBar').style.width = Math.min(100, p) + '%';
+  $('memPressureBar').className = p > 75 ? 'bad' : (p > 50 ? 'warn' : '');
+
+  $('memBadge').textContent = Math.round(pct) + '%';
+
+  const list = e.processes || [];
+  $('procList').innerHTML = list.length ? list.map(p2 => `
+    <div class="prow" data-pid="${p2.pid}">
+      <span class="pname">${esc(p2.name)}</span>
+      <span class="pid">${p2.pid}</span>
+      <span class="prss">${fmtSize(p2.rss)}</span>
+      <button class="quitbtn" data-pid="${p2.pid}" data-name="${esc(p2.name)}">退出</button>
+    </div>`).join('') : '<div class="empty-note">读取进程列表失败</div>';
+
+  $('procList').querySelectorAll('.quitbtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.confirm !== '1') {
+        btn.dataset.confirm = '1';
+        btn.textContent = '确认退出';
+        btn.classList.add('warn');
+        setTimeout(() => {
+          if (btn.dataset.confirm === '1') {
+            btn.dataset.confirm = '';
+            btn.textContent = '退出';
+            btn.classList.remove('warn');
+          }
+        }, 3000);
+        return;
+      }
+      call('quitProcess', { pid: Number(btn.dataset.pid) });
+    });
+  });
+}
+
+function startMemoryPolling() {
+  stopMemoryPolling();
+  call('memoryInfo');
+  S.memTimer = setInterval(() => {
+    if (S.mode === 'memory') call('memoryInfo');
+  }, 2500);
+}
+function stopMemoryPolling() {
+  if (S.memTimer) { clearInterval(S.memTimer); S.memTimer = null; }
 }
 
 /* ============ 排序 ============ */
@@ -1294,13 +1468,13 @@ document.querySelectorAll('.tab').forEach(tab => {
     const mode = tab.dataset.mode;
     S.mode = mode;
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
-    ['explorer', 'kinds', 'large', 'junk', 'uninstall', 'duplicates'].forEach(m => {
+    ['explorer', 'kinds', 'large', 'junk', 'uninstall', 'duplicates', 'memory'].forEach(m => {
       $('view-' + m).hidden = m !== mode;
     });
 
     $('pageTitle').textContent =
       { explorer: '空间树图', kinds: '类型分析', large: '大文件', junk: '垃圾文件',
-        uninstall: '卸载应用', duplicates: '重复文件' }[mode];
+        uninstall: '卸载应用', duplicates: '重复文件', memory: '内存' }[mode];
 
     if (mode === 'explorer') {
       $('pageSub').textContent = S.lastScan
@@ -1320,6 +1494,12 @@ document.querySelectorAll('.tab').forEach(tab => {
       call('junk'); renderJunk();
     }
     if (mode === 'duplicates') renderDups(null);
+    if (mode === 'memory') {
+      $('pageSub').textContent = '实时内存占用与可回收空间';
+      startMemoryPolling();
+    } else {
+      stopMemoryPolling();
+    }
     if (mode === 'uninstall') {
       $('pageSub').textContent = S.apps.length
         ? `${S.apps.length} 个应用` : '正在分析已安装应用…';
@@ -1400,6 +1580,11 @@ $('junkClear').addEventListener('click', () => { S.junkSel.clear(); renderJunk()
 $('junkTrash').addEventListener('click', () => {
   const paths = Array.from(S.junkSel);
   if (paths.length) call('trash', { paths });
+});
+
+$('memClean').addEventListener('click', () => {
+  if (S.memCleaning) return;
+  call('cleanMemory');
 });
 
 $('appsRefresh').addEventListener('click', () => { S.apps = []; S.appsSorted = false; call('listApps'); });

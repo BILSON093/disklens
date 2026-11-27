@@ -37,6 +37,7 @@ swiftc -O -swift-version 5 -sdk "$SDK" -target "$TARGET" \
     "$ROOT/Sources/Models.swift" \
     "$ROOT/Sources/Scanner.swift" \
     "$ROOT/Sources/Apps.swift" \
+    "$ROOT/Sources/Memory.swift" \
     "$ROOT/Sources/Similar.swift" \
     "$ROOT/Sources/Host.swift" \
     "$ROOT/Sources/Snapshot.swift" \

@@ -38,6 +38,11 @@
         <span>卸载应用</span>
         <em class="badge" id="appBadge"></em>
       </button>
+      <button class="tab" data-mode="memory">
+        <svg viewBox="0 0 16 16"><rect x="2.5" y="4" width="11" height="8" rx="1.5"/><path d="M5 4V2.5M8 4V2.5M11 4V2.5M5 13.5V12M8 13.5V12M11 13.5V12"/></svg>
+        <span>内存</span>
+        <em class="badge" id="memBadge"></em>
+      </button>
       <button class="tab" data-mode="duplicates">
         <svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="8" height="8" rx="1.5"/><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/></svg>
         <span>重复文件</span>
@@ -212,6 +217,49 @@
       </div>
     </section>
 
+    <!-- 内存 -->
+    <section class="view" id="view-memory" hidden>
+      <div class="mem-top">
+        <div class="mem-card">
+          <div class="mem-label">已用内存</div>
+          <div class="mem-big" id="memUsed">—</div>
+          <div class="mem-sub" id="memSub">正在读取…</div>
+          <div class="mem-bar" id="memBar">
+            <i class="seg app" id="segApp"></i>
+            <i class="seg wired" id="segWired"></i>
+            <i class="seg comp" id="segComp"></i>
+            <i class="seg cache" id="segCache"></i>
+          </div>
+          <div class="mem-legend">
+            <span><i class="dot app"></i>应用内存<b id="memApp">—</b></span>
+            <span><i class="dot wired"></i>联动内存<b id="memWired">—</b></span>
+            <span><i class="dot comp"></i>压缩内存<b id="memComp">—</b></span>
+            <span><i class="dot cache"></i>文件缓存<b id="memCache">—</b></span>
+          </div>
+          <div class="mem-actions">
+            <button class="primary" id="memClean">一键释放</button>
+            <span class="mem-hint" id="memHint">只清理系统缓存与可回收内存，不会退出任何程序</span>
+          </div>
+        </div>
+        <div class="mem-side">
+          <div class="mem-pressure">
+            <div class="mp-label">内存压力</div>
+            <div class="mp-value" id="memPressure">—</div>
+            <div class="mp-bar"><i id="memPressureBar"></i></div>
+          </div>
+          <div class="mem-row"><span>交换分区</span><b id="memSwap">—</b></div>
+          <div class="mem-row"><span>空闲</span><b id="memFree">—</b></div>
+        </div>
+      </div>
+      <div class="proc-wrap">
+        <div class="proc-head">
+          <span>占用最高的进程</span>
+          <em id="procHint">点「退出」可关闭对应程序，只影响你点的那一个</em>
+        </div>
+        <div class="proclist" id="procList"></div>
+      </div>
+    </section>
+
     <!-- 重复文件 -->
     <section class="view" id="view-duplicates" hidden>
       <div class="dup-controls">
@@ -260,6 +308,14 @@
       </div>
     </section>
   </main>
+</div>
+
+<div class="drop-overlay" id="dropOverlay" hidden>
+  <div class="drop-inner">
+    <svg viewBox="0 0 64 64"><rect x="12" y="16" width="40" height="32" rx="7"/><path d="M32 40V26M32 26l-6 6M32 26l6 6"/></svg>
+    <h3>松开以卸载</h3>
+    <p id="dropHint">把「应用程序」里的 .app 拖到窗口任意位置</p>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
