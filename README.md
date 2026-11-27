@@ -76,6 +76,33 @@ xattr -dr com.apple.quarantine /Applications/DiskLens.app
 - **结果缓存**：每次扫描会把树的前 5 层、类型/应用聚合、垃圾清单存到
   `~/Library/Application Support/DiskLens/last-scan.json`，下次打开直接回放并显示扫描时间，不必重扫。
 
+## 常见问题
+
+**开启了完全磁盘访问，界面仍提示「尚未生效」？**
+系统按二进制哈希记录授权，自行编译后哈希变化会被当成新程序。在设置里把 DiskLens 移除再重新添加即可；Releases 中的构建是固定的，授权一次长期有效。
+
+**全盘扫描的总量比「已用空间」少几十 GB？**
+全盘会跳过 `/.nofollow`、`/.resolve`、`/System/Volumes`、`/Volumes`（firmlink 影子副本与系统快照），差值主要是 APFS 本地快照和系统卷。侧栏的磁盘占用条读的是文件系统真实数值。
+
+**为什么有些目录始终读不到？**
+`/private/var/db`、`/var/root` 这类路径即使拥有完全磁盘访问也需要 root 权限，属正常现象。点提示里的「查看目录」可以看到具体清单。
+
+**上次的扫描结果存在哪、会不会过期？**
+存在 `~/Library/Application Support/DiskLens/last-scan.json`，保存树的前 5 层与聚合数据。目录被删除或移动后缓存会自动作废。深层目录、重复文件与相似照片仍需重新扫描。
+
+## 开发与调试
+
+除了 GUI，应用内置了几个命令行入口，便于验证和排查：
+
+```bash
+./build/DiskLens.app/Contents/MacOS/DiskLens --scanonly <目录>   # 只跑扫描内核，打印统计
+./build/DiskLens.app/Contents/MacOS/DiskLens --apps             # 列出已安装应用与残留
+./build/DiskLens.app/Contents/MacOS/DiskLens --trash <路径,...>  # 测试删除链路
+./build/DiskLens.app/Contents/MacOS/DiskLens --hittest <x,y>    # 查看某坐标命中的视图
+```
+
+环境变量 `DL_AUTOCONFIRM=1` 可跳过删除确认框，`DL_DEBUG_SNAP=1` 打印快照读写日志。
+
 ## 已知限制
 
 - 全盘扫描不含系统卷与 APFS 本地快照，实际可用空间请看侧栏的磁盘占用条。

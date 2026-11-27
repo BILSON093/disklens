@@ -10,7 +10,7 @@ const S = {
   thumbs: {}, thumbPending: {},
   kinds: [], appStats: [], kindMode: 'kinds',
   large: [], largeSel: new Set(), largeMin: 524288000,
-  apps: [], appSel: new Set(), appFocus: null, appQuery: '', appIcons: {},
+  apps: [], appSel: new Set(), appFocus: null, appQuery: '', appIcons: {}, appIconPending: {},
   dupMode: 'exact',
   minSize: 1048576,
   sort: {
@@ -294,12 +294,16 @@ function handleEvent(e) {
       S.dups.forEach(g => { g.files = g.files.filter(f => !done.has(f.path)); });
       S.dups = S.dups.filter(g => g.files.length > 1);
       S.large = S.large.filter(f => !done.has(f.path));
+      S.largeTotal = S.large.reduce((s2, f) => s2 + f.size, 0);
+      S.largeCount = S.large.length;
       S.junkSel.clear();
       S.dupSel.clear();
       S.largeSel.clear();
 
       if (S.lastScan && e.newTotal) {
         S.lastScan.totalSize = e.newTotal;
+        if (e.newFileCount != null) S.lastScan.fileCount = e.newFileCount;
+        $('pageSub').textContent = `${fmtSize(S.lastScan.totalSize)} · ${fmtCount(S.lastScan.fileCount)} 个文件`;
       }
       S.childrenCache = {};
       if (S.currentPath) call('children', { path: S.currentPath });
@@ -333,7 +337,8 @@ function handleEvent(e) {
 
     case 'appIcon':
       S.appIcons[e.path] = e.data || '';
-      document.querySelectorAll(`img.aicon[data-icon-path="${CSS.escape(e.path)}"]`).forEach(img => {
+      delete S.appIconPending[e.path];
+      document.querySelectorAll(`img[data-icon-path="${CSS.escape(e.path)}"]`).forEach(img => {
         img.src = e.data || '';
       });
       break;
@@ -1041,9 +1046,14 @@ function renderAppPreview() {
       }).join('')
     : `<div class="pv-note" style="margin:0">没有检测到残留文件，这个应用很干净。</div>`;
 
+  if (S.appIcons[a.path] === undefined && !S.appIconPending[a.path]) {
+    S.appIconPending[a.path] = true;
+    call('appIcon', { path: a.path });
+  }
+
   box.innerHTML = `
     <div class="appHead">
-      <img src="${a.icon || ''}" alt="">
+      <img data-icon-path="${esc(a.path)}" src="${S.appIcons[a.path] || ''}" alt="">
       <div>
         <div class="pv-name">${esc(a.name)}</div>
         <div class="pv-sub">版本 ${esc(a.version)} · ${fmtSize(a.size)}</div>

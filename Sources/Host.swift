@@ -607,6 +607,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
 
     func loadCachedScan() {
         guard result == nil, let snap = SnapshotStore.load() else { return }
+        // 缓存的目录已被删除或移走时不再回放，避免展示不存在的路径
+        guard FileManager.default.fileExists(atPath: snap.path) else {
+            SnapshotStore.clear()
+            return
+        }
 
         let root = SnapshotStore.toFNode(snap.tree)
         let kinds: [KindStat] = snap.kinds.compactMap {
@@ -651,6 +656,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             "prevTotal": -1,
             "prevDate": "",
             "fromCache": true,
+            "hasFDA": Self.hasFullDiskAccess(),
             "scannedAt": ISO8601DateFormatter().string(from: snap.date)
         ])
     }
@@ -843,8 +849,12 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             return
         }
 
+        // 缓存结果没有完整文件清单，回退到大文件缓存或树节点
         let totalSize = allowed.reduce(Int64(0)) { acc, p in
-            acc + (result?.allFiles.first(where: { $0.path == p })?.size ?? 0)
+            if let f = result?.allFiles.first(where: { $0.path == p }) { return acc + f.size }
+            if let f = largeCache.first(where: { $0.path == p }) { return acc + f.size }
+            if let n = node(at: p) { return acc + n.size }
+            return acc
         }
 
         // 测试环境可跳过确认框
@@ -899,8 +909,20 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             "type": "trashDone", "ok": res.ok, "freed": res.freed,
             "failed": res.failed, "blocked": blocked,
             "paths": Array(set),
-            "newTotal": result?.totalSize ?? 0
+            "newTotal": result?.totalSize ?? 0,
+            "newFileCount": result?.fileCount ?? 0
         ])
+
+        // 让磁盘上的快照与当前状态保持一致
+        if var res2 = result {
+            res2.allFiles = res2.allFiles.filter { !set.contains($0.path) }
+            res2.fileCount = max(0, res2.fileCount - set.count)
+            let remainingJunk = junkItems
+            let cachedLarge = largeCache.filter { !set.contains($0.path) }
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                SnapshotStore.save(res2, junk: remainingJunk, files: res2.allFiles.isEmpty ? cachedLarge : res2.allFiles)
+            }
+        }
     }
 
     /// 从树里扣掉已删节点，保持界面数字一致

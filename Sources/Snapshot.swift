@@ -92,7 +92,19 @@ enum SnapshotStore {
         let encoder = JSONEncoder()
         encoder.outputFormatting = []
         guard let data = try? encoder.encode(snap) else { return }
-        try? data.write(to: url, options: .atomic)
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            // macOS 14+ 会给文件打 com.apple.provenance 标记，
+            // 之后再用“临时文件改名覆盖”的原子写法会返回 EPERM，
+            // 这里退化为先删除再写入
+            try? FileManager.default.removeItem(at: url)
+            try? data.write(to: url)
+        }
+        if ProcessInfo.processInfo.environment["DL_DEBUG_SNAP"] != nil {
+            let onDisk = (try? Data(contentsOf: url)).map { $0.count } ?? -1
+            FileHandle.standardError.write("snapshot saved: \(res.totalSize / 1_048_576)MB files=\(res.fileCount) disk=\(onDisk)B\n".data(using: .utf8)!)
+        }
     }
 
     private static func toSnap(_ node: FNode, depth: Int, budget: inout Int) -> SnapNode {
