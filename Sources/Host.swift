@@ -445,7 +445,9 @@ final class Bridge: NSObject, WKScriptMessageHandler, AppDropDelegate {
         case "cleanMemory":
             cleanMemory()
         case "quitProcess":
-            if let pid = body["pid"] as? Int { quitProcess(pid: Int32(pid)) }
+            if let pid = body["pid"] as? Int { quitProcess(pid: Int32(pid), force: false) }
+        case "forceQuitProcess":
+            if let pid = body["pid"] as? Int { quitProcess(pid: Int32(pid), force: true) }
         case "inspectApp":
             if let p = body["path"] as? String { sendAppInfo(path: p) }
         case "appIcon":
@@ -791,15 +793,39 @@ final class Bridge: NSObject, WKScriptMessageHandler, AppDropDelegate {
         }
     }
 
-    private func quitProcess(pid: Int32) {
+    private func quitProcess(pid: Int32, force: Bool) {
         guard let app = NSRunningApplication(processIdentifier: pid) else {
             emit(["type": "quitResult", "ok": false, "pid": Int(pid), "message": "该进程已不存在"])
             return
         }
         let name = app.localizedName ?? "该进程"
-        let ok = app.terminate()
-        emit(["type": "quitResult", "ok": ok, "pid": Int(pid),
-              "message": ok ? "已请求退出 \(name)" : "退出 \(name) 失败，可能需要在系统中确认"])
+
+        if force {
+            let ok = app.forceTerminate()
+            emit(["type": "quitResult", "ok": ok, "forced": true, "pid": Int(pid),
+                  "message": ok ? "已强制退出 \(name)，未保存的修改可能丢失"
+                                : "无法强制退出 \(name)，可能属于系统进程"])
+            return
+        }
+
+        guard app.terminate() else {
+            emit(["type": "quitBlocked", "pid": Int(pid), "name": name,
+                  "message": "\(name) 拒绝退出请求"])
+            return
+        }
+
+        // 给应用 2.5 秒正常退出，超时则交给用户决定是否强制
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            guard let self else { return }
+            let still = NSRunningApplication(processIdentifier: pid)
+            if still == nil || still?.isTerminated == true {
+                self.emit(["type": "quitResult", "ok": true, "pid": Int(pid),
+                           "message": "已退出 \(name)"])
+            } else {
+                self.emit(["type": "quitBlocked", "pid": Int(pid), "name": name,
+                           "message": "\(name) 没有响应退出请求（可能在等待保存或已卡住）。可再次点击强制退出，但未保存的内容会丢失。"])
+            }
+        }
     }
 
     // MARK: 单个应用信息

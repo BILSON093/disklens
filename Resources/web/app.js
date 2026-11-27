@@ -13,7 +13,7 @@ const S = {
   apps: [], appSel: new Set(), appFocus: null, appQuery: '', appIcons: {}, appIconPending: {},
   dupMode: 'exact',
   dupCollapsed: false,
-  memTimer: null, memCleaning: false, memLast: null,
+  memTimer: null, memCleaning: false, memLast: null, forcePending: new Set(),
   pendingApp: null,
   minSize: 1048576,
   sort: {
@@ -380,7 +380,14 @@ function handleEvent(e) {
       break;
     }
 
+    case 'quitBlocked':
+      S.forcePending.add(e.pid);
+      toast(e.message || '应用未响应，可再次点击强制退出');
+      if (S.mode === 'memory') call('memoryInfo');
+      break;
+
     case 'quitResult':
+      S.forcePending.delete(e.pid);
       toast(e.message);
       setTimeout(() => { if (S.mode === 'memory') call('memoryInfo'); }, 800);
       break;
@@ -548,11 +555,20 @@ function renderMemory(e) {
       <span class="pname">${esc(p2.name)}</span>
       <span class="pid">${p2.pid}</span>
       <span class="prss">${fmtSize(p2.rss)}</span>
-      <button class="quitbtn" data-pid="${p2.pid}" data-name="${esc(p2.name)}">退出</button>
+      <button class="quitbtn${S.forcePending.has(p2.pid) ? ' warn' : ''}" data-pid="${p2.pid}" data-name="${esc(p2.name)}"${S.forcePending.has(p2.pid) ? ' data-force="1"' : ''}>${S.forcePending.has(p2.pid) ? '强制退出' : '退出'}</button>
     </div>`).join('') : '<div class="empty-note">读取进程列表失败</div>';
+
+  // 进程消失后清理待定状态
+  const alivePids = new Set(list.map(p2 => p2.pid));
+  S.forcePending.forEach(pid => { if (!alivePids.has(pid)) S.forcePending.delete(pid); });
 
   $('procList').querySelectorAll('.quitbtn').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (btn.dataset.force === '1') {
+        S.forcePending.delete(Number(btn.dataset.pid));
+        call('forceQuitProcess', { pid: Number(btn.dataset.pid) });
+        return;
+      }
       if (btn.dataset.confirm !== '1') {
         btn.dataset.confirm = '1';
         btn.textContent = '确认退出';
