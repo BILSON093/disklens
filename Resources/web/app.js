@@ -12,6 +12,7 @@ const S = {
   large: [], largeSel: new Set(), largeMin: 524288000,
   apps: [], appSel: new Set(), appFocus: null, appQuery: '', appIcons: {}, appIconPending: {},
   dupMode: 'exact',
+  dupCollapsed: false,
   memTimer: null, memCleaning: false, memLast: null,
   pendingApp: null,
   minSize: 1048576,
@@ -141,6 +142,7 @@ function handleEvent(e) {
       $('junkBadge').textContent = e.junkCount || '';
       call('children', { path: e.rootPath });
       call('aggregates');
+      refreshCurrentView();
       break;
     }
 
@@ -275,6 +277,7 @@ function handleEvent(e) {
         ? `${e.count} 组相似照片 · 可回收 ${fmtSize(e.reclaimable)}`
         : '没有发现相似照片';
       renderDups(e);
+      if (S.dupCollapsed) applyDupCollapse();
       break;
 
     case 'dupStarted':
@@ -298,6 +301,7 @@ function handleEvent(e) {
         ? `${e.count} 组 · 可回收 ${fmtSize(e.reclaimable)}`
         : '没有发现重复文件';
       renderDups(e);
+      if (S.dupCollapsed) applyDupCollapse();
       break;
     }
 
@@ -448,6 +452,34 @@ function renderDisk(e) {
   $('diskSub').textContent = `共 ${fmtSize(e.total)} · 已用 ${Math.round(used * 100)}%`;
 }
 
+/* ============ 结果折叠 ============ */
+function applyDupCollapse() {
+  const view = $('view-duplicates');
+  const btn = $('dupCollapse');
+  view.classList.toggle('collapsed', !!S.dupCollapsed);
+  btn.textContent = S.dupCollapsed ? '展开结果' : '收起结果';
+
+  const bar = $('dupFoldBar');
+  if (!S.dupCollapsed) { if (bar) bar.remove(); return; }
+
+  const n = S.dups.length;
+  const total = S.dups.reduce((a, g) => a + (g.reclaimable || 0), 0);
+  const label = S.dupMode === 'similar' ? '组相似照片'
+              : (S.dupMode === 'video' ? '组重复视频' : '组重复文件');
+  const el = bar || document.createElement('div');
+  el.id = 'dupFoldBar';
+  el.className = 'fold-bar';
+  el.innerHTML = n
+    ? `已收起 ${fmtCount(n)} ${label} · 可释放 ${fmtSize(total)}<button class="mini" id="dupExpand">展开</button>`
+    : '结果区已收起，点「展开结果」查看';
+  if (!bar) {
+    const anchor = $('view-duplicates').querySelector('.actionbar');
+    $('view-duplicates').insertBefore(el, anchor);
+  }
+  const exp = $('dupExpand');
+  if (exp) exp.addEventListener('click', () => { S.dupCollapsed = false; applyDupCollapse(); });
+}
+
 /* ============ 拖入应用 ============ */
 function focusDroppedApp(app) {
   if (!app) return;
@@ -547,6 +579,27 @@ function startMemoryPolling() {
 }
 function stopMemoryPolling() {
   if (S.memTimer) { clearInterval(S.memTimer); S.memTimer = null; }
+}
+
+/// 扫描结束后刷新当前所在视图，避免必须切页才看到结果
+function refreshCurrentView() {
+  // 新扫描意味着旧的查重/相似结果基于旧数据，直接作废
+  if (S.dups.length) {
+    S.dups = []; S.dupSel.clear(); S.dupKeep = {}; S.dupFocus = null;
+    if (S.mode === 'duplicates') {
+      renderDups(null);
+      if (S.dupCollapsed) applyDupCollapse();
+    }
+  }
+  if (S.mode === 'junk') {
+    call('junk');
+  } else if (S.mode === 'large') {
+    call('largeFiles', { minSize: S.largeMin });
+  } else if (S.mode === 'uninstall' && !S.apps.length) {
+    call('listApps');
+  } else if (S.mode === 'kinds') {
+    renderKinds();
+  }
 }
 
 /* ============ 排序 ============ */
@@ -1136,15 +1189,7 @@ function renderApps() {
     return;
   }
 
-  const head = `<div class="apphead">
-      <span class="h-app">应用</span>
-      <span class="h-col">最近使用</span>
-      <span class="h-col">安装</span>
-      <span class="h-col h-lo">残留</span>
-      <span class="h-col h-sz">大小</span>
-    </div>`;
-
-  box.innerHTML = head + list.map(a => {
+  box.innerHTML = list.map(a => {
     const focused = S.appFocus && S.appFocus.path === a.path;
     const lo = (a.leftovers || []).length;
     return `<div class="approw${focused ? ' focused' : ''}" data-path="${esc(a.path)}">
@@ -1265,11 +1310,21 @@ function renderDups(done) {
   const box = $('dupList');
 
   if (done && S.dups.length === 0) {
-    box.innerHTML = `<div class="empty-note">没有发现重复文件。<br>图标相同不算重复，这里比对的是内容哈希；硬链接按同一份数据计算。</div>`;
+    const msg = S.dupMode === 'similar'
+      ? '没有发现相似照片。<br>只比对常见图片格式，且需要画面结构接近。'
+      : (S.dupMode === 'video'
+        ? '没有发现重复视频。<br>只比对视频容器格式，且内容需完全一致。'
+        : '没有发现重复文件。<br>图标相同不算重复，这里比对的是内容哈希；硬链接按同一份数据计算。');
+    box.innerHTML = `<div class="empty-note">${msg}</div>`;
     renderDupPreview(); updateDupSel(); return;
   }
   if (!S.dups.length) {
-    box.innerHTML = `<div class="empty-note">点击「开始查重」按内容比对。<br>默认只比对大于 1 MB 的文件，避免误伤小配置文件。</div>`;
+    const hint = S.dupMode === 'similar'
+      ? '点击「扫描相似照片」按画面结构比对。'
+      : (S.dupMode === 'video'
+        ? '点击「扫描重复视频」比对视频内容。'
+        : '点击「开始查重」按内容比对。<br>默认只比对大于 1 MB 的文件，避免误伤小配置文件。');
+    box.innerHTML = `<div class="empty-note">${hint}</div>`;
     renderDupPreview(); updateDupSel(); return;
   }
 
@@ -1582,6 +1637,11 @@ $('junkTrash').addEventListener('click', () => {
   if (paths.length) call('trash', { paths });
 });
 
+$('dupCollapse').addEventListener('click', () => {
+  S.dupCollapsed = !S.dupCollapsed;
+  applyDupCollapse();
+});
+
 $('memClean').addEventListener('click', () => {
   if (S.memCleaning) return;
   call('cleanMemory');
@@ -1600,7 +1660,18 @@ document.querySelectorAll('#dupMode button').forEach(b => {
   b.addEventListener('click', () => {
     document.querySelectorAll('#dupMode button').forEach(x => x.classList.toggle('active', x === b));
     S.dupMode = b.dataset.m;
-    const exact = S.dupMode === 'exact';
+    const exact = S.dupMode === 'exact' || S.dupMode === 'video';
+    // 相似照片按感知哈希比对，与文件体积无关，隐藏该筛选
+    $('dupSizeWrap').hidden = S.dupMode === 'similar';
+    $('dupScan').textContent = S.dupMode === 'video' ? '扫描重复视频'
+                              : (S.dupMode === 'similar' ? '扫描相似照片' : '开始查重');
+    $('dupSelInfo').textContent = S.dupMode === 'similar'
+      ? '每组默认保留分辨率最高的一份'
+      : '每组默认保留最新的一份';
+    // 换模式后旧结果不再有意义，清空并提示
+    S.dups = []; S.dupSel.clear(); S.dupKeep = {}; S.dupFocus = null;
+    renderDups(null);
+    if (S.dupCollapsed) applyDupCollapse();
     document.querySelectorAll('#dupSize button').forEach(x => x.disabled = !exact);
     $('dupScan').textContent = exact ? '开始查重' : '开始识图';
     if (exact) {
@@ -1621,6 +1692,7 @@ document.querySelectorAll('#dupSize button').forEach(b => {
 });
 $('dupScan').addEventListener('click', () => {
   if (S.dupMode === 'similar') call('findSimilar', { tolerance: 14 });
+  else if (S.dupMode === 'video') call('findDuplicateVideos', { minSize: S.minSize });
   else call('findDuplicates', { minSize: S.minSize });
 });
 $('dupSelectAll').addEventListener('click', () => {

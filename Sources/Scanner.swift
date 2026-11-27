@@ -495,10 +495,13 @@ enum DupScanner {
     /// 三阶段查重，并按 inode 去重：硬链接不算可回收空间
     static func find(files: [FileEntry],
                      minSize: Int64,
+                     extensions: Set<String>? = nil,
                      progress: (String, Double) -> Void) -> [DupGroup] {
 
         var bySize: [Int64: [FileEntry]] = [:]
         for f in files where f.size >= minSize {
+            // 视频模式只比对指定扩展名
+            if let exts = extensions, !exts.contains(f.ext) { continue }
             bySize[f.size, default: []].append(f)
         }
         let candidates = bySize.filter { $0.value.count > 1 }

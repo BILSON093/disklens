@@ -202,7 +202,16 @@
         <button class="primary" id="appsRefresh">重新分析</button>
       </div>
       <div class="dup-body">
-        <div class="applist" id="appList"></div>
+        <div class="applist-wrap">
+          <div class="apphead">
+            <span class="h-app">应用</span>
+            <span class="h-col">最近使用</span>
+            <span class="h-col">安装</span>
+            <span class="h-col h-lo">残留</span>
+            <span class="h-col h-sz">大小</span>
+          </div>
+          <div class="applist" id="appList"></div>
+        </div>
         <aside class="preview" id="appPreview">
           <div class="preview-empty">
             <svg viewBox="0 0 40 40"><rect x="7" y="7" width="26" height="26" rx="7"/><path d="M14 26V14h8a4 4 0 0 1 0 8h-8"/></svg>
@@ -266,13 +275,16 @@
         <div class="segmented" id="dupMode">
           <button class="active" data-m="exact">完全重复</button>
           <button data-m="similar">相似照片</button>
+          <button data-m="video">重复视频</button>
         </div>
-        <label style="margin-left:4px">最小体积</label>
-        <div class="segmented" id="dupSize">
-          <button data-size="102400">100 KB</button>
-          <button class="active" data-size="1048576">1 MB</button>
-          <button data-size="10485760">10 MB</button>
-          <button data-size="104857600">100 MB</button>
+        <div class="dup-sizefilter" id="dupSizeWrap">
+          <label style="margin-left:4px">最小体积</label>
+          <div class="segmented" id="dupSize">
+            <button data-size="102400">100 KB</button>
+            <button class="active" data-size="1048576">1 MB</button>
+            <button data-size="10485760">10 MB</button>
+            <button data-size="104857600">100 MB</button>
+          </div>
         </div>
         <div class="spacer"></div>
         <div class="sortbox">
@@ -284,6 +296,7 @@
           </select>
           <button class="sortdir" id="dupSortDir" title="切换升序 / 降序">↓</button>
         </div>
+        <button class="mini" id="dupCollapse" title="把结果区折叠起来">收起结果</button>
         <button class="primary" id="dupScan">开始查重</button>
       </div>
       <div class="dup-progress" id="dupProgress" hidden>

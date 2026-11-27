@@ -420,6 +420,9 @@ final class Bridge: NSObject, WKScriptMessageHandler, AppDropDelegate {
         case "findSimilar":
             let tol = (body["tolerance"] as? NSNumber)?.intValue ?? 14
             startSimilar(tolerance: tol)
+        case "findDuplicateVideos":
+            startDuplicates(minSize: (body["minSize"] as? NSNumber)?.int64Value ?? 10_485_760,
+                            extensions: Self.videoExtensions)
         case "findDuplicates":
             startDuplicates(minSize: (body["minSize"] as? NSNumber)?.int64Value ?? 1_048_576)
         case "trash":
@@ -973,7 +976,13 @@ final class Bridge: NSObject, WKScriptMessageHandler, AppDropDelegate {
 
     // MARK: 查重
 
-    private func startDuplicates(minSize: Int64) {
+    /// 常见视频容器格式
+    static let videoExtensions: Set<String> = [
+        "mp4", "mov", "m4v", "mkv", "avi", "wmv", "flv", "webm",
+        "mpg", "mpeg", "ts", "m2ts", "3gp", "rmvb", "rm", "vob"
+    ]
+
+    private func startDuplicates(minSize: Int64, extensions: Set<String>? = nil) {
         guard let result, !isDupRunning else { return }
         guard !result.allFiles.isEmpty else {
             emit(["type": "needRescan", "reason": "查重需要完整的文件清单，请先重新扫描"])
@@ -986,7 +995,8 @@ final class Bridge: NSObject, WKScriptMessageHandler, AppDropDelegate {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             var last = Date.distantPast
-            let groups = DupScanner.find(files: files, minSize: minSize) { msg, p in
+            let groups = DupScanner.find(files: files, minSize: minSize,
+                                         extensions: extensions) { msg, p in
                 let now = Date()
                 guard now.timeIntervalSince(last) > 0.15 else { return }
                 last = now
